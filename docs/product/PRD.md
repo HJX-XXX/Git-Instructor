@@ -71,7 +71,7 @@
 | `git branch -d` / `-D <name>` | 删分支；`-d` 拒绝未合并 tip |
 | `git switch <name>` / `git checkout <name>` | 切换分支 |
 | `git switch -c` / `git checkout -b <name>` | 新建并切换 |
-| `git merge <name>` | FF 或双父 merge commit |
+| `git merge <name>` | FF；分叉且干净 → 双父 merge commit；分叉且 dirty → CONFLICT |
 | `git reset --soft\|--mixed\|--hard HEAD~n` | 移动当前分支 tip |
 | `git revert <hash>\|HEAD` | 生成反向提交 |
 | `git rebase <branch>` | 把当前分支独有提交重放到目标 tip |

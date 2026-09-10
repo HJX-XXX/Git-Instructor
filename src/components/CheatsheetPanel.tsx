@@ -3,7 +3,6 @@ import { CHEAT_CATEGORIES, filterCheats } from '../data/cheatsheet';
 
 interface Props {
   onFill: (cmd: string) => void;
-  onFocusRelated?: string;
 }
 
 export function CheatsheetPanel({ onFill }: Props) {

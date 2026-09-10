@@ -63,6 +63,23 @@ describe('applyCommand', () => {
     expect(tip.message).toContain('Merge branch');
   });
 
+  it('blocks merge with CONFLICT when dirty and diverged', () => {
+    const diverged = runAll(createInitialDemoState(), [
+      'git switch -c feature',
+      'git commit -m "feat: a"',
+      'git switch main',
+      'git commit -m "fix: b"',
+      'git commit -m "tmp"',
+    ]);
+    const soft = applyCommand(diverged, 'git reset --soft HEAD~1');
+    expect(soft.ok).toBe(true);
+    expect(soft.state.dirty).toBe(true);
+    const merge = applyCommand(soft.state, 'git merge feature');
+    expect(merge.ok).toBe(false);
+    expect(merge.stdout.join('\n')).toContain('CONFLICT');
+    expect(merge.state.branches.main).toBe(soft.state.branches.main);
+  });
+
   it('resets hard HEAD~1', () => {
     const s0 = createInitialDemoState();
     const before = s0.branches.main;

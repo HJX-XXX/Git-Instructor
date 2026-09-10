@@ -171,9 +171,6 @@ function runLog(state: RepoState, oneline: boolean): CommandResult {
 
 function runCommit(state: RepoState, message: string): CommandResult {
   const tip = headCommitId(state);
-  if (!tip && state.head.kind === 'branch' && Object.keys(state.commits).length > 0) {
-    // empty branch not expected
-  }
   const parents: CommitId[] = tip ? [tip] : [];
   const commit = createCommit(state, parents, message);
   const moved = setHeadTip(state, commit.id);
@@ -339,16 +336,39 @@ function runMerge(state: RepoState, name: string): CommandResult {
       { movedRefs: [currentBranch], newHead: true },
     );
   }
+
+  // 分叉：工作区脏时模拟 CONFLICT，干净时自动完成并提示真实 Git 冲突可能
+  if (state.dirty) {
+    return fail(
+      state,
+      [
+        `CONFLICT (content): 合并冲突`,
+        `Automatic merge failed; fix conflicts and then commit the result.`,
+        `（教学模拟：当前工作区有未提交改动时拒绝 merge。请先 commit 或 git reset --hard 对齐后再试。）`,
+      ],
+      {
+        title: '合并冲突',
+        summary: `双方都有独有提交，且工作区不干净；merge 已停止，分支未移动。`,
+        detail: '真实 Git 还会在「同一文件两边都改」时产生 CONFLICT。本沙箱用 dirty 标记模拟「停下来解决」。',
+        related: ['git status', 'git reset --hard HEAD', `git merge ${name}`],
+      },
+    );
+  }
+
   const commit = createCommit(state, [toTip, fromTip], `Merge branch '${name}' into ${currentBranch}`);
   state.branches[currentBranch] = commit.id;
   state.dirty = false;
   return ok(
     state,
-    [`Merge made by the 'ort' strategy.`, `已创建合并提交 ${commit.id}`],
+    [
+      `Merge made by the 'ort' strategy.`,
+      `已创建合并提交 ${commit.id}`,
+      `提示：真实 Git 在双方修改同一文件时会 CONFLICT 并要求你手动解决；本沙箱无文件内容，分叉且工作区干净时直接生成合并节点。`,
+    ],
     {
       title: '创建合并提交',
       summary: `把 ${name}（${fromTip}）合并进 ${currentBranch}，生成双父节点 ${commit.id}。`,
-      detail: '图上从合并节点会分出两条父链；这是理解冲突与历史的关键形状。',
+      detail: '图上从合并节点会分出两条父链；这是理解冲突与历史的关键形状。若工作区有未提交改动，本沙箱会以 CONFLICT 拒绝合并。',
       related: ['git log --oneline', `git branch ${name}`],
     },
     { createdCommits: [commit.id], movedRefs: [currentBranch], newHead: true },
@@ -377,8 +397,8 @@ function runReset(
   state.branches[state.head.name] = target;
   if (mode === 'hard') {
     state.dirty = false;
-    state.workingFiles = [...state.workingFiles];
-  } else {
+  } else if (steps > 0) {
+    // 撤销提交后，教学上标记为仍有改动待提交
     state.dirty = true;
   }
   const modeNote =

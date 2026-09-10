@@ -89,7 +89,6 @@ export default function App() {
     setExplanation(null);
     setHighlights(undefined);
     setInput('');
-    setHistory((h) => [...h, '__reset__']);
     setHistIdx(-1);
   }, []);
 

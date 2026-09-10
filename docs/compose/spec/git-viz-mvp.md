@@ -100,7 +100,7 @@ interface Explanation {
 | `git branch -d\|-D <name>` | 删除分支（`-d` 拒绝未合并到当前分支的 tip） |
 | `git switch <name>` / `git checkout <name>` | 切换分支 |
 | `git switch -c <name>` / `git checkout -b <name>` | 新建并切换 |
-| `git merge <name>` | fast-forward 或双 parent merge commit；already up to date / 冲突文案（MVP 不做手动解决） |
+| `git merge <name>` | fast-forward；已最新；分叉且工作区干净 → 双 parent merge commit；分叉且 dirty → CONFLICT（不做手动解决） |
 | `git reset --soft\|--mixed\|--hard HEAD~<n>` | 移动当前分支 tip；--hard 清 dirty |
 | `git revert <hash>\|HEAD` | 反向 commit |
 | `git rebase <branch>` | 线性 rebase：把当前分支独有 commit 重放到目标 tip |
