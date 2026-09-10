@@ -1,14 +1,20 @@
 ---
 feature: git-viz-mvp
-status: in-progress
+status: delivered
 updated: 2026-02-14
 branch: feat/git-viz-mvp
-commits: ef0a4bb..ef0a4bb
+commits: ef0a4bb..328d68a
 ---
 
 # Git 可视化教学沙箱（MVP）
 
 ## Report
+
+**What was built** — 纯前端 React + TypeScript + Vite 沙箱：自研内存 Git 引擎支持 commit / branch / switch / merge / reset / revert / rebase / status / log；三栏 UI（速查、SVG 提交图 + 深色终端、中文讲解）；预置 main×3 演示仓库与一键重置。merge 语义为：FF；分叉且干净生成双父合并并提示真实 Git 冲突可能；分叉且 dirty 以 CONFLICT 拒绝且不改状态。
+
+**Verification** — `npm test` 28/28 PASS；`npm run lint` 0 errors；`npm run build` PASS。独立审查（ef0a4bb..66f0038）提出 merge 冲突文案缺口后已修复并复审通过（66f0038..328d68a）。
+
+**Journey log** — 绿地上先写 PRD 再实现；布局用 createdAt 降序 + first-parent lane，避免复杂拓扑；冲突不做文件级模拟，用 dirty 标记保证教学可控；审查后补齐 CONFLICT 路径与文档对齐。
 
 ## [S1] Problem
 
