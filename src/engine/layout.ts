@@ -35,16 +35,23 @@ const NODE_GAP_Y = 64;
 const LANE_GAP_X = 56;
 const RAIL_X = 28;
 export const MSG_X = 180;
-/** 分支标签固定列（消息右侧独立区域，避免与文字重叠） */
-export const REF_X = 520;
-export const MSG_MAX_CHARS = 28;
-const PAD_TOP = 52;
+/** 本地分支标签列 */
+export const REF_X = 480;
+/** origin/* 远程标签列（与本地分开） */
+export const ORIGIN_REF_X = 700;
+export const MSG_MAX_CHARS = 48;
+const PAD_TOP = 48;
 const PAD_BOTTOM = 36;
 
-function reachableSet(state: RepoState): Set<CommitId> {
+function reachableSet(
+  state: RepoState,
+  remoteBranches: Record<string, CommitId> = {},
+): Set<CommitId> {
   const tips: CommitId[] = [
     ...Object.values(state.branches),
     ...(headCommitId(state) ? [headCommitId(state)!] : []),
+    // 已 fetch 到本地的远程 tip 也要画出来
+    ...Object.values(remoteBranches).filter((id) => state.commits[id]),
   ];
   const seen = new Set<CommitId>();
   const stack = [...tips];
@@ -65,7 +72,7 @@ export function layoutGraph(
   state: RepoState,
   remoteBranches: Record<string, CommitId> = {},
 ): GraphLayout {
-  const reach = reachableSet(state);
+  const reach = reachableSet(state, remoteBranches);
   const ids = Object.values(state.commits)
     .filter((c) => reach.has(c.id))
     .map((c) => c.id)
@@ -170,7 +177,7 @@ export function layoutGraph(
   return {
     nodes,
     edges,
-    width: REF_X + 220,
+    width: ORIGIN_REF_X + 240,
     height: maxY + PAD_BOTTOM,
     laneCount,
     laneX,

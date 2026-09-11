@@ -87,6 +87,25 @@ describe('multi-user world', () => {
     expect(fr.world.users.bob.branches.main).toBeUndefined();
   });
 
+  it('after fetch, remote tip commits are in local store for graph', () => {
+    let w = createEmptyWorld();
+    w = runAll(w, [
+      'git commit -m "base"',
+      'git push origin main',
+      'git switch -c feature',
+      'git commit -m "alice feature"',
+      'git push origin feature',
+    ]);
+    const featureTip = w.users.alice.branches.feature!;
+
+    w = switchUser(w, 'bob').world;
+    w = runAll(w, ['git fetch']);
+    // Bob 本地 main 仍只有 base，但 feature 提交对象已导入，且 origin/feature 可解析
+    expect(w.users.bob.commits[featureTip]).toBeDefined();
+    expect(w.remoteBranches.feature).toBe(featureTip);
+    expect(w.users.bob.branches.feature).toBeUndefined();
+  });
+
   it('push then other user sees origin/* after fetch via layout data', () => {
     let w = createEmptyWorld();
     w = runAll(w, ['git commit -m "x"', 'git push origin main']);

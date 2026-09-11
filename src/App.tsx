@@ -20,17 +20,28 @@ interface TermLine {
   kind: 'in' | 'out' | 'err';
 }
 
-const WELCOME: TermLine[] = [
-  { text: '双用户协作沙箱已就绪。当前：Alice · 空白本地仓库 · 共享远程 origin 为空。', kind: 'out' },
-  { text: '练习：Alice commit → push → 顶栏切到 Bob → fetch/pull 查看。', kind: 'out' },
-  { text: '也可 git switch -c feature 在分支上开发；user alice|user bob 切换用户。', kind: 'out' },
-];
+function welcomeFor(id: UserId): TermLine[] {
+  const name = USER_META[id].label;
+  return [
+    { text: `${name} 的沙箱终端已就绪（与另一名用户互不干扰）。`, kind: 'out' },
+    { text: '练习：commit → push origin <branch> → 换人 fetch/pull。', kind: 'out' },
+    { text: '协作命令：git push / fetch / pull / remote -v；顶栏可切换用户。', kind: 'out' },
+  ];
+}
+
+function emptyHist(): Record<UserId, TermLine[]> {
+  return { alice: welcomeFor('alice'), bob: welcomeFor('bob') };
+}
+
+function emptyHistories(): Record<UserId, string[]> {
+  return { alice: [], bob: [] };
+}
 
 export default function App() {
   const [world, setWorld] = useState(() => createEmptyWorld());
-  const [lines, setLines] = useState<TermLine[]>(WELCOME);
+  const [termByUser, setTermByUser] = useState<Record<UserId, TermLine[]>>(emptyHist);
+  const [historyByUser, setHistoryByUser] = useState<Record<UserId, string[]>>(emptyHistories);
   const [input, setInput] = useState('');
-  const [history, setHistory] = useState<string[]>([]);
   const [histIdx, setHistIdx] = useState(-1);
   const [explanation, setExplanation] = useState<Explanation | null>(null);
   const [highlights, setHighlights] = useState<Highlights | undefined>(undefined);
@@ -45,37 +56,51 @@ export default function App() {
   const state = activeRepo(world);
   const userLabel = USER_META[world.activeUser].label;
   const remoteRefs = visibleRemoteRefs(world);
+  const lines = termByUser[world.activeUser];
+  const history = historyByUser[world.activeUser];
 
   const branchLabel =
     state.head.kind === 'branch'
       ? `${userLabel} · ${state.head.name}${Object.keys(state.commits).length === 0 ? '（尚无提交）' : ''}`
       : `${userLabel} · 游离 HEAD`;
 
-  const run = useCallback((raw: string) => {
-    const cmd = raw.trim();
-    if (!cmd) return;
-    const result = applyWorldCommand(world, cmd);
-    setHistory((h) => [...h, cmd]);
-    setHistIdx(-1);
-    setLines((prev) => [
+  const appendTerm = useCallback((userId: UserId, extra: TermLine[]) => {
+    setTermByUser((prev) => ({
       ...prev,
-      { text: `[${USER_META[result.world.activeUser].label}] ${cmd}`, kind: 'in' },
-      ...result.stdout.map((t) => ({
-        text: t,
-        kind: result.ok ? ('out' as const) : ('err' as const),
-      })),
-    ]);
-    if (result.ok) {
-      setWorld(result.world);
-      setHighlights(result.highlights);
-    } else {
-      // 失败不改仓库；但若命令本身是 switchUser 成功路径已处理
-      setWorld(result.world);
-      setHighlights(undefined);
-    }
-    setExplanation(result.explanation);
-    setInput('');
-  }, [world]);
+      [userId]: [...prev[userId], ...extra],
+    }));
+  }, []);
+
+  const run = useCallback(
+    (raw: string) => {
+      const cmd = raw.trim();
+      if (!cmd) return;
+      const fromUser = world.activeUser;
+      const result = applyWorldCommand(world, cmd);
+      setHistoryByUser((prev) => ({
+        ...prev,
+        [fromUser]: [...prev[fromUser], cmd],
+      }));
+      setHistIdx(-1);
+      appendTerm(fromUser, [
+        { text: `[${USER_META[fromUser].label}] ${cmd}`, kind: 'in' },
+        ...result.stdout.map((t) => ({
+          text: t,
+          kind: result.ok ? ('out' as const) : ('err' as const),
+        })),
+      ]);
+      if (result.ok) {
+        setWorld(result.world);
+        setHighlights(result.highlights);
+      } else {
+        setWorld(result.world);
+        setHighlights(undefined);
+      }
+      setExplanation(result.explanation);
+      setInput('');
+    },
+    [world, appendTerm],
+  );
 
   const onSubmit = useCallback(() => {
     run(input);
@@ -102,26 +127,36 @@ export default function App() {
     [history, histIdx],
   );
 
+  const onClear = useCallback(() => {
+    const id = world.activeUser;
+    setTermByUser((prev) => ({
+      ...prev,
+      [id]: [{ text: `— 已清空 ${USER_META[id].label} 的终端输出 —`, kind: 'out' }],
+    }));
+  }, [world.activeUser]);
+
   const onSwitchUser = useCallback(
     (id: UserId) => {
       if (id === world.activeUser) return;
       const result = switchUser(world, id);
       setWorld(result.world);
-      setLines((prev) => [
-        ...prev,
-        { text: `— 切换到 ${USER_META[id].label} —`, kind: 'out' },
+      appendTerm(id, [
+        { text: `— 你正在查看 ${USER_META[id].label} 的终端 —`, kind: 'out' },
         ...result.stdout.map((t) => ({ text: t, kind: 'out' as const })),
       ]);
       setExplanation(result.explanation);
       setHighlights(undefined);
+      setHistIdx(-1);
+      setInput('');
       inputRef.current?.focus();
     },
-    [world],
+    [world, appendTerm],
   );
 
   const onResetEmpty = useCallback(() => {
     setWorld(createEmptyWorld());
-    setLines([...WELCOME, { text: '已重置：Alice / Bob 本地与远程均为空白。', kind: 'out' }]);
+    setTermByUser(emptyHist());
+    setHistoryByUser(emptyHistories());
     setExplanation(null);
     setHighlights(undefined);
     setInput('');
@@ -130,15 +165,20 @@ export default function App() {
 
   const onLoadDemo = useCallback(() => {
     setWorld(createDemoWorld());
-    setLines([
-      ...WELCOME,
-      { text: '已加载演示：Alice / Bob 各有相同的 main 历史，origin/main 已存在。', kind: 'out' },
-    ]);
+    setTermByUser((prev) => ({
+      alice: [
+        ...prev.alice,
+        { text: '已加载演示：Alice / Bob 各有相同 main 历史，origin/main 已存在。', kind: 'out' },
+      ],
+      bob: [
+        ...prev.bob,
+        { text: '已加载演示：Alice / Bob 各有相同 main 历史，origin/main 已存在。', kind: 'out' },
+      ],
+    }));
     setExplanation({
       title: '已加载协作演示',
-      summary:
-        '两人本地 main 历史相同，远程也有 main。可各自 switch -c 建 feature，push 后换人 pull。',
-      detail: '点顶栏 Alice / Bob 切换；终端里也可用 user bob。',
+      summary: '两人本地 main 相同，远程也有 main。可各自建 feature，push 后换人 pull。',
+      detail: '顶栏 Alice / Bob 切换；两人终端历史互相独立。',
       related: ['git switch -c feature', 'git push', 'user bob', 'git pull'],
     });
     setHighlights(undefined);
@@ -149,7 +189,7 @@ export default function App() {
   useEffect(() => {
     const el = bodyRef.current?.querySelector('.terminal-body');
     if (el) el.scrollTop = el.scrollHeight;
-  }, [lines]);
+  }, [lines, world.activeUser]);
 
   return (
     <div className="app">
@@ -167,9 +207,9 @@ export default function App() {
         <div className="howto">
           <strong>协作怎么练：</strong>
           Alice：<code>git switch -c feature</code> → <code>git commit</code> →{' '}
-          <code>git push origin feature</code>；顶栏切 Bob → <code>git fetch</code> →{' '}
-          <code>git pull</code> 或 <code>git switch feature</code>。虚线蓝标签 ={' '}
-          <code>origin/*</code> 远程跟踪。
+          <code>git push origin feature</code>；顶栏切 Bob → <code>git fetch</code> → 图上会出现{' '}
+          <code>origin/feature</code>；再 <code>git pull</code> 或 <code>git switch feature</code>。
+          蓝色虚线 = 远程跟踪。
         </div>
       )}
       <div className="layout">
@@ -188,7 +228,7 @@ export default function App() {
             onInputChange={setInput}
             onSubmit={onSubmit}
             onHistory={onHistory}
-            onClear={() => setLines([])}
+            onClear={onClear}
             inputRef={inputRef}
           />
         </main>

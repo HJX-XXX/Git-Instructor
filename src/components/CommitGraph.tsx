@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { headCommitId } from '../engine/hash';
 import type { Highlights, RepoState } from '../engine/types';
-import { layoutGraph, MSG_X, REF_X, MSG_MAX_CHARS } from '../engine/layout';
+import { layoutGraph, MSG_X, REF_X, ORIGIN_REF_X, MSG_MAX_CHARS } from '../engine/layout';
 
 const LANE_COLORS = ['#16A34A', '#7C3AED', '#2563EB', '#D97706', '#DB2777', '#0D9488'];
 
@@ -27,7 +27,7 @@ function sameTipNote(state: RepoState): string | null {
   }
   for (const names of byTip.values()) {
     if (names.length > 1) {
-      return `分支 ${names.join('、')} 指向同一提交——通常表示还没有在其中一个分支上单独 commit。`;
+      return `${names.join('、')} 指向同一提交，尚未各自 commit`;
     }
   }
   return null;
@@ -122,13 +122,6 @@ export function CommitGraph({
         </div>
       </div>
 
-      {headBranch && (
-        <div className="graph-head-explain">
-          右侧<strong>橙色标签</strong>（以及节点橙环）表示 <strong>HEAD</strong>
-          所在的分支——你此刻站在上面；下一次 <code>git commit</code> 只会让它前进。其它分支为白底描边。
-        </div>
-      )}
-
       {note && <div className="graph-note">{note}</div>}
 
       <div className="graph-wrap" aria-label="提交图">
@@ -163,7 +156,7 @@ export function CommitGraph({
 
         {!empty && (
           <svg className="graph-svg" viewBox={viewBox} role="img">
-            <text x={12} y={18} className="axis-label">
+            <text x={12} y={16} className="axis-label">
               最新
             </text>
             <text x={12} y={height - 10} className="axis-label">
@@ -171,7 +164,7 @@ export function CommitGraph({
             </text>
             <line x1={20} y1={28} x2={20} y2={height - 28} className="axis-line" />
 
-            {/* 分支标签列分隔线，视觉分区 */}
+            {/* 本地分支列 / 远程 origin 列分隔 */}
             <line
               x1={REF_X - 16}
               y1={36}
@@ -181,6 +174,21 @@ export function CommitGraph({
               strokeWidth="1"
               strokeDasharray="4 4"
             />
+            <line
+              x1={ORIGIN_REF_X - 16}
+              y1={36}
+              x2={ORIGIN_REF_X - 16}
+              y2={Math.max(80, height - 24)}
+              stroke="#dbeafe"
+              strokeWidth="1"
+              strokeDasharray="4 4"
+            />
+            <text x={REF_X} y={30} className="col-label">
+              本地分支
+            </text>
+            <text x={ORIGIN_REF_X} y={30} className="col-label origin">
+              origin/*
+            </text>
 
             {layout.laneX.map((x, i) => (
               <line
@@ -273,11 +281,12 @@ export function CommitGraph({
                     {msg}
                   </text>
 
-                  {/* 分支标签：当前分支用唯一橙色高亮，文案为 HEAD · 分支名 */}
+                  {/* 本地分支列 */}
                   {branches.map((b, i) => {
                     const label = b.isCurrent ? `HEAD · ${b.name}` : b.name;
                     const pw = pillWidth(label);
-                    const py = n.y - 11 - i * 26;
+                    const x = REF_X;
+                    const py2 = n.y - 11 + i * 26;
                     const isMoved = moved.has(b.name);
                     return (
                       <g
@@ -285,23 +294,21 @@ export function CommitGraph({
                         className={`ref-badge${isMoved ? ' is-moved' : ''}${b.isCurrent ? ' is-current' : ''}`}
                       >
                         <title>
-                          {b.isCurrent
-                            ? `HEAD → ${b.name}：你当前所在的分支`
-                            : `本地分支 ${b.name}`}
+                          {b.isCurrent ? `HEAD → ${b.name}：当前分支` : `本地分支 ${b.name}`}
                         </title>
                         <rect
-                          x={REF_X}
-                          y={py}
+                          x={x}
+                          y={py2}
                           width={pw}
                           height={22}
                           rx={11}
                           fill={b.isCurrent ? '#F97316' : '#fff'}
                           stroke={b.isCurrent ? '#C2410C' : color}
-                          strokeWidth={b.isCurrent ? 0 : 1.8}
+                          strokeWidth={b.isCurrent ? 0 : 1.6}
                         />
                         <text
-                          x={REF_X + pw / 2}
-                          y={py + 11}
+                          x={x + pw / 2}
+                          y={py2 + 11}
                           textAnchor="middle"
                           dominantBaseline="central"
                           className="ref-text"
@@ -313,25 +320,27 @@ export function CommitGraph({
                     );
                   })}
 
-                  {/* 远程跟踪引用 origin/* */}
+                  {/* origin/* 独立列 */}
                   {(n.remoteBranches ?? []).map((rb, i) => {
-                    const py = n.y - 11 - (branches.length + i) * 26;
                     const pw = pillWidth(rb);
+                    const x = ORIGIN_REF_X;
+                    const py = n.y - 11 + i * 26;
                     return (
                       <g key={rb} className="ref-badge is-remote">
+                        <title>{`共享远程 ${rb}`}</title>
                         <rect
-                          x={REF_X}
+                          x={x}
                           y={py}
                           width={pw}
                           height={22}
                           rx={11}
                           fill="#EFF6FF"
                           stroke="#3B82F6"
-                          strokeWidth="1.5"
+                          strokeWidth="1.6"
                           strokeDasharray="3 2"
                         />
                         <text
-                          x={REF_X + pw / 2}
+                          x={x + pw / 2}
                           y={py + 11}
                           textAnchor="middle"
                           dominantBaseline="central"
