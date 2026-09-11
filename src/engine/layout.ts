@@ -8,13 +8,15 @@ export interface LayoutNode {
   message: string;
   lane: number;
   branches: string[];
+  /** origin/xxx 远程跟踪引用 */
+  remoteBranches: string[];
   isHead: boolean;
-  reachable: boolean;
+  colorIndex: number;
 }
 
 export interface LayoutEdge {
   from: CommitId;
-  to: CommitId; // parent
+  to: CommitId;
   kind: 'first' | 'merge';
 }
 
@@ -24,12 +26,20 @@ export interface GraphLayout {
   width: number;
   height: number;
   laneCount: number;
+  /** 每条 lane 的 x 坐标，便于画竖轨 */
+  laneX: number[];
+  /** 最新在上时的节点列表（已是该顺序） */
 }
 
-const NODE_GAP_Y = 72;
-const LANE_GAP_X = 48;
-const PAD_X = 56;
-const PAD_Y = 40;
+const NODE_GAP_Y = 64;
+const LANE_GAP_X = 56;
+const RAIL_X = 28;
+export const MSG_X = 180;
+/** 分支标签固定列（消息右侧独立区域，避免与文字重叠） */
+export const REF_X = 520;
+export const MSG_MAX_CHARS = 28;
+const PAD_TOP = 52;
+const PAD_BOTTOM = 36;
 
 function reachableSet(state: RepoState): Set<CommitId> {
   const tips: CommitId[] = [
@@ -48,10 +58,13 @@ function reachableSet(state: RepoState): Set<CommitId> {
 }
 
 /**
- * 新提交在上：按 createdAt 降序；同层尽量稳定。
- * lane：简单 DFS 分配，尽量让历史主链保持一列。
+ * 新提交在上。lane 按分支 tip 的 first-parent 链分配；
+ * 消息统一排在图右侧固定区域，避免和节点挤在一起。
  */
-export function layoutGraph(state: RepoState): GraphLayout {
+export function layoutGraph(
+  state: RepoState,
+  remoteBranches: Record<string, CommitId> = {},
+): GraphLayout {
   const reach = reachableSet(state);
   const ids = Object.values(state.commits)
     .filter((c) => reach.has(c.id))
@@ -67,18 +80,26 @@ export function layoutGraph(state: RepoState): GraphLayout {
     yOf.set(id, index);
   });
 
-  // lane assignment: main-like chain from each branch tip
   const laneOf = new Map<CommitId, number>();
+  const colorOf = new Map<CommitId, number>();
   let nextLane = 0;
-  const branchNames = Object.keys(state.branches).sort();
-  const orderedTips: Array<{ name?: string; tip: CommitId }> = [];
+
+  // 当前 HEAD 所在分支优先占 lane 0，便于一眼看到主链
+  const branchNames = Object.keys(state.branches).sort((a, b) => {
+    const headName = state.head.kind === 'branch' ? state.head.name : '';
+    if (a === headName) return -1;
+    if (b === headName) return 1;
+    return a.localeCompare(b);
+  });
+
+  const orderedTips: CommitId[] = [];
   for (const name of branchNames) {
-    orderedTips.push({ name, tip: state.branches[name]! });
+    orderedTips.push(state.branches[name]!);
   }
   const headTip = headCommitId(state);
-  if (headTip) orderedTips.push({ tip: headTip });
+  if (headTip && !orderedTips.includes(headTip)) orderedTips.push(headTip);
 
-  for (const { tip } of orderedTips) {
+  for (const tip of orderedTips) {
     let cur: CommitId | null = tip;
     const lane = nextLane;
     const seen = new Set<CommitId>();
@@ -86,6 +107,7 @@ export function layoutGraph(state: RepoState): GraphLayout {
       seen.add(cur);
       if (!laneOf.has(cur)) {
         laneOf.set(cur, lane);
+        colorOf.set(cur, lane);
       }
       const parents: CommitId[] = state.commits[cur]!.parents;
       cur = parents[0] ?? null;
@@ -93,15 +115,20 @@ export function layoutGraph(state: RepoState): GraphLayout {
     nextLane += 1;
   }
 
-  // remaining commits (merge second parents etc.)
   for (const id of ids) {
     if (!laneOf.has(id)) {
       laneOf.set(id, nextLane);
+      colorOf.set(id, nextLane);
       nextLane += 1;
     }
   }
 
   const laneCount = Math.max(1, nextLane);
+  const laneX: number[] = [];
+  for (let i = 0; i < laneCount; i += 1) {
+    laneX.push(RAIL_X + i * LANE_GAP_X);
+  }
+
   const nodes: LayoutNode[] = ids.map((id) => {
     const c = state.commits[id]!;
     const lane = laneOf.get(id) ?? 0;
@@ -109,18 +136,23 @@ export function layoutGraph(state: RepoState): GraphLayout {
     for (const name of Object.keys(state.branches)) {
       if (state.branches[name] === id) branches.push(name);
     }
+    const remoteList: string[] = [];
+    for (const [name, tip] of Object.entries(remoteBranches)) {
+      if (tip === id && state.commits[id]) remoteList.push(`origin/${name}`);
+    }
     const isHead =
       (state.head.kind === 'detached' && state.head.commitId === id) ||
       (state.head.kind === 'branch' && state.branches[state.head.name] === id);
     return {
       id,
       lane,
-      x: PAD_X + lane * LANE_GAP_X,
-      y: PAD_Y + (yOf.get(id) ?? 0) * NODE_GAP_Y,
+      x: laneX[lane] ?? RAIL_X,
+      y: PAD_TOP + (yOf.get(id) ?? 0) * NODE_GAP_Y,
       message: c.message,
       branches,
+      remoteBranches: remoteList,
       isHead,
-      reachable: true,
+      colorIndex: colorOf.get(id) ?? 0,
     };
   });
 
@@ -134,13 +166,13 @@ export function layoutGraph(state: RepoState): GraphLayout {
   }
 
   const maxY = nodes.reduce((m, n) => Math.max(m, n.y), 0);
-  const maxX = nodes.reduce((m, n) => Math.max(m, n.x), 0);
 
   return {
     nodes,
     edges,
-    width: maxX + PAD_X + 160,
-    height: maxY + PAD_Y + 48,
+    width: REF_X + 220,
+    height: maxY + PAD_BOTTOM,
     laneCount,
+    laneX,
   };
 }

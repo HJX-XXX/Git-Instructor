@@ -6,10 +6,19 @@ interface Props {
   onInputChange: (v: string) => void;
   onSubmit: () => void;
   onHistory: (dir: -1 | 1) => void;
+  onClear: () => void;
   inputRef: RefObject<HTMLInputElement | null>;
 }
 
-export function TerminalPanel({ lines, input, onInputChange, onSubmit, onHistory, inputRef }: Props) {
+export function TerminalPanel({
+  lines,
+  input,
+  onInputChange,
+  onSubmit,
+  onHistory,
+  onClear,
+  inputRef,
+}: Props) {
   return (
     <div className="terminal">
       <div className="terminal-bar">
@@ -17,6 +26,14 @@ export function TerminalPanel({ lines, input, onInputChange, onSubmit, onHistory
         <span className="dot yellow" />
         <span className="dot green" />
         <span className="terminal-title">git 沙箱终端</span>
+        <button
+          type="button"
+          className="terminal-clear"
+          onClick={onClear}
+          title="清空终端输出（不影响仓库状态）"
+        >
+          清空
+        </button>
       </div>
       <div className="terminal-body" role="log" aria-live="polite">
         {lines.map((l, i) => (

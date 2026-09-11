@@ -175,14 +175,17 @@ function runCommit(state: RepoState, message: string): CommandResult {
   const commit = createCommit(state, parents, message);
   const moved = setHeadTip(state, commit.id);
   state.dirty = false;
+  const branchName = state.head.kind === 'branch' ? state.head.name : 'HEAD';
   return ok(
     state,
-    [`[${(state.head.kind === 'branch' ? state.head.name : 'HEAD')} ${commit.id}] ${message}`],
+    [`[${branchName} ${commit.id}] ${message}`],
     {
-      title: '创建提交',
-      summary: `在 ${tip ?? '空仓库'} 之上新建了提交 ${commit.id}，${moved ? `分支 ${moved}` : 'HEAD'} 已前移。`,
-      detail: '每个提交通过 parent 指向历史，形成 DAG。',
-      related: ['git status', 'git log --oneline'],
+      title: tip ? '在当前分支上新增提交' : '创建了第一个提交',
+      summary: tip
+        ? `新提交 ${commit.id} 接在 ${tip} 之后，分支 ${moved ?? 'HEAD'} 前进到它。其它分支不会动。`
+        : `空仓库里出现首个提交 ${commit.id}，分支 ${moved ?? 'HEAD'} 从「尚无提交」变成指向它。`,
+      detail: '本沙箱用「提交」代表你在该分支上的改动；图上圆点变多就说明这条分支往前走了。',
+      related: ['git log --oneline', 'git status'],
     },
     { createdCommits: [commit.id], movedRefs: moved ? [moved] : [], newHead: true },
   );
@@ -204,10 +207,12 @@ function runBranchCreate(state: RepoState, name: string): CommandResult {
   }
   state.branches[name] = tip;
   return ok(state, [`已创建分支 ${name} → ${tip}`], {
-    title: '创建分支',
-    summary: `分支 ${name} 指向当前 tip ${tip}，尚未切换过去。`,
-    detail: '分支只是指向某个 commit 的可移动指针。',
-    related: [`git switch ${name}`, `git switch -c feature`],
+    title: '已创建分支，但还没站上去',
+    summary: `分支 ${name} 只是一个指向 ${tip} 的指针。你仍在当前分支（${
+      state.head.kind === 'branch' ? state.head.name : 'HEAD'
+    }），所以图上 ${name} 和当前分支会指到同一个提交——这很正常。`,
+    detail: '要在 feature 上产生改动：先切换过去，再 commit。本沙箱没有真实文件，「改动」用提交来模拟。',
+    related: [`git switch ${name}`, `git commit -m "feat: 在 ${name} 上的第一笔改动"`],
   }, { movedRefs: [name] });
 }
 
@@ -272,9 +277,10 @@ function runSwitch(
     state.branches[name] = tip;
     state.head = { kind: 'branch', name };
     return ok(state, [`已切换到新分支 ${name}`], {
-      title: '新建并切换',
-      summary: `在 ${tip} 上创建 ${name} 并让 HEAD 指向它。`,
-      related: ['git commit -m "feat: 第一次提交"'],
+      title: '已站上新分支',
+      summary: `在 ${tip} 上创建了 ${name}，HEAD 已指向它。现在你在这个分支上。`,
+      detail: '下一步：用 git commit 提交改动，图上只有 feature 会前进，main 停在原处。',
+      related: [`git commit -m "feat: 在 ${name} 上的第一笔改动"`, 'git log --oneline'],
     }, { movedRefs: [name], newHead: true });
   }
 
@@ -286,10 +292,12 @@ function runSwitch(
     });
   }
   state.head = { kind: 'branch', name };
+  const tip = state.branches[name]!;
   return ok(state, [`已切换到分支 ${name}`], {
     title: '切换分支',
-    summary: `HEAD 现在指向分支 ${name}（tip ${state.branches[name]}）。`,
-    detail: '切换不创建新提交，只是移动 HEAD 指针。',
+    summary: `HEAD 现在指向 ${name}（tip ${tip}）。之后的 commit 会记在 ${name} 上。`,
+    detail: '切换不创建提交，只是把 HEAD 移到该分支指针。',
+    related: [`git commit -m "feat: 在 ${name} 上的改动"`, 'git status'],
   }, { newHead: true });
 }
 

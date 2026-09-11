@@ -164,6 +164,28 @@ export function parseCommand(rawInput: string): ParsedCommand {
     return { type: 'rebase', target };
   }
 
+  if (cmd === 'push') {
+    const setUpstream = rest.includes('-u') || rest.includes('--set-upstream');
+    // git push / git push origin / git push origin main / git push -u origin main
+    const names = rest.filter((a) => !a.startsWith('-') && a !== 'origin');
+    const branch = names[0];
+    return { type: 'push', branch, setUpstream };
+  }
+
+  if (cmd === 'fetch') {
+    return { type: 'fetch' };
+  }
+
+  if (cmd === 'pull') {
+    const names = rest.filter((a) => !a.startsWith('-') && a !== 'origin');
+    return { type: 'pull', branch: names[0] };
+  }
+
+  if (cmd === 'remote') {
+    if (rest.includes('-v') || rest.length === 0) return { type: 'remote_list' };
+    return { type: 'remote_list' };
+  }
+
   return {
     type: 'unknown',
     raw,

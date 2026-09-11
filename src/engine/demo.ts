@@ -1,6 +1,18 @@
 import type { RepoState } from './types';
 
-/** 预置演示仓库：main 上 3 个提交，HEAD 在 main */
+/** 空白仓库：类似 git init，main 尚无提交 */
+export function createEmptyRepoState(): RepoState {
+  return {
+    commits: {},
+    branches: {},
+    head: { kind: 'branch', name: 'main' },
+    workingFiles: [],
+    dirty: false,
+    commitSeq: 0,
+  };
+}
+
+/** 可选演示仓库：main 上 3 个提交，用于快速观察历史图 */
 export function createInitialDemoState(): RepoState {
   return {
     commits: {

@@ -21,11 +21,34 @@ export interface RepoState {
   commitSeq: number;
 }
 
+export type UserId = 'alice' | 'bob';
+
+export interface WorldState {
+  activeUser: UserId;
+  users: Record<UserId, RepoState>;
+  /** 共享远程仓库：分支名 → tip */
+  remoteBranches: Record<string, CommitId>;
+  /** 远程上的提交对象 */
+  remoteCommits: Record<CommitId, Commit>;
+}
+
+export interface WorldCommandResult {
+  ok: boolean;
+  world: WorldState;
+  stdout: string[];
+  explanation: Explanation;
+  highlights?: Highlights;
+  /** 仅当切换用户时设置 */
+  switchedUser?: UserId;
+}
+
 export interface Highlights {
   createdCommits?: CommitId[];
   movedRefs?: string[];
   deletedRefs?: string[];
   newHead?: boolean;
+  /** 远程相关引用（origin/main 等） */
+  remoteRefs?: string[];
 }
 
 export interface Explanation {
@@ -57,4 +80,8 @@ export type ParsedCommand =
   | { type: 'reset'; mode: ResetMode; steps: number }
   | { type: 'revert'; target: string }
   | { type: 'rebase'; target: string }
+  | { type: 'push'; branch?: string; setUpstream: boolean }
+  | { type: 'fetch' }
+  | { type: 'pull'; branch?: string }
+  | { type: 'remote_list' }
   | { type: 'unknown'; raw: string; hint: string };

@@ -41,6 +41,17 @@ describe('parseCommand', () => {
   it('rejects unknown', () => {
     expect(parseCommand('git frobnicate').type).toBe('unknown');
   });
+
+  it('parses push/fetch/pull/remote', () => {
+    expect(parseCommand('git push origin main')).toEqual({
+      type: 'push',
+      branch: 'main',
+      setUpstream: false,
+    });
+    expect(parseCommand('git fetch').type).toBe('fetch');
+    expect(parseCommand('git pull')).toEqual({ type: 'pull', branch: undefined });
+    expect(parseCommand('git remote -v').type).toBe('remote_list');
+  });
 });
 
 describe('hash helpers', () => {

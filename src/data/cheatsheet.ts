@@ -15,6 +15,7 @@ export const CHEAT_CATEGORIES = [
   '切换',
   '合并与变基',
   '回退',
+  '协作',
 ] as const;
 
 export const CHEATSHEET: CheatItem[] = [
@@ -125,6 +126,51 @@ export const CHEATSHEET: CheatItem[] = [
     summary: '追加一个抵消提交，不改写既有历史。',
     fill: 'git revert HEAD',
     keywords: ['revert', '反做', '抵消'],
+  },
+  {
+    id: 'push',
+    category: '协作',
+    title: '推送分支',
+    syntax: 'git push origin <branch>',
+    summary: '把本地分支发布到共享远程；远程落后时可快进，否则会被拒绝。',
+    fill: 'git push origin main',
+    keywords: ['push', '推送', '远程', 'origin'],
+  },
+  {
+    id: 'fetch',
+    category: '协作',
+    title: '获取远程',
+    syntax: 'git fetch',
+    summary: '下载 origin 上的提交与 origin/* 引用，不自动合并。',
+    fill: 'git fetch',
+    keywords: ['fetch', '获取', '远程'],
+  },
+  {
+    id: 'pull',
+    category: '协作',
+    title: '拉取并合并',
+    syntax: 'git pull',
+    summary: 'fetch + merge，把远程更新合进当前分支。',
+    fill: 'git pull',
+    keywords: ['pull', '拉取', '同步'],
+  },
+  {
+    id: 'remote',
+    category: '协作',
+    title: '查看远程',
+    syntax: 'git remote -v',
+    summary: '查看共享远程 origin 与当前远程分支。',
+    fill: 'git remote -v',
+    keywords: ['remote', '远程', 'origin'],
+  },
+  {
+    id: 'user-switch',
+    category: '协作',
+    title: '切换模拟用户',
+    syntax: 'user alice | user bob',
+    summary: '切换到另一名用户的本地仓库（也可用顶栏按钮）。',
+    fill: 'user bob',
+    keywords: ['user', '用户', 'alice', 'bob', '切换用户'],
   },
 ];
 

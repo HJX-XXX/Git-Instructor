@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { applyCommand } from './engine/apply';
-import { createInitialDemoState } from './engine/demo';
-import type { CommandResult, Explanation, Highlights, RepoState } from './engine/types';
+import type { Explanation, Highlights, UserId } from './engine/types';
+import {
+  activeRepo,
+  applyWorldCommand,
+  createEmptyWorld,
+  createDemoWorld,
+  switchUser,
+  USER_META,
+  visibleRemoteRefs,
+} from './engine/world';
 import { CheatsheetPanel } from './components/CheatsheetPanel';
 import { CommitGraph } from './components/CommitGraph';
 import { ExplanationPanel } from './components/ExplanationPanel';
@@ -14,46 +21,61 @@ interface TermLine {
 }
 
 const WELCOME: TermLine[] = [
-  { text: 'Git 可视化教学沙箱已就绪。当前为演示仓库（main × 3 commits）。', kind: 'out' },
-  { text: '输入 help 查看命令，或从左侧「速查提示」填入。', kind: 'out' },
+  { text: '双用户协作沙箱已就绪。当前：Alice · 空白本地仓库 · 共享远程 origin 为空。', kind: 'out' },
+  { text: '练习：Alice commit → push → 顶栏切到 Bob → fetch/pull 查看。', kind: 'out' },
+  { text: '也可 git switch -c feature 在分支上开发；user alice|user bob 切换用户。', kind: 'out' },
 ];
 
 export default function App() {
-  const [state, setState] = useState<RepoState>(() => createInitialDemoState());
+  const [world, setWorld] = useState(() => createEmptyWorld());
   const [lines, setLines] = useState<TermLine[]>(WELCOME);
   const [input, setInput] = useState('');
   const [history, setHistory] = useState<string[]>([]);
   const [histIdx, setHistIdx] = useState(-1);
   const [explanation, setExplanation] = useState<Explanation | null>(null);
   const [highlights, setHighlights] = useState<Highlights | undefined>(undefined);
-  const [showHelp, setShowHelp] = useState(true);
+  const [showHelp, setShowHelp] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const bodyRef = useRef<HTMLDivElement | null>(null);
 
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  const state = activeRepo(world);
+  const userLabel = USER_META[world.activeUser].label;
+  const remoteRefs = visibleRemoteRefs(world);
+
   const branchLabel =
-    state.head.kind === 'branch' ? `分支 ${state.head.name}` : `游离 HEAD ${state.head.commitId}`;
+    state.head.kind === 'branch'
+      ? `${userLabel} · ${state.head.name}${Object.keys(state.commits).length === 0 ? '（尚无提交）' : ''}`
+      : `${userLabel} · 游离 HEAD`;
 
   const run = useCallback((raw: string) => {
     const cmd = raw.trim();
     if (!cmd) return;
-    const result: CommandResult = applyCommand(state, cmd);
+    const result = applyWorldCommand(world, cmd);
     setHistory((h) => [...h, cmd]);
     setHistIdx(-1);
     setLines((prev) => [
       ...prev,
-      { text: cmd, kind: 'in' },
-      ...result.stdout.map((t) => ({ text: t, kind: result.ok ? ('out' as const) : ('err' as const) })),
+      { text: `[${USER_META[result.world.activeUser].label}] ${cmd}`, kind: 'in' },
+      ...result.stdout.map((t) => ({
+        text: t,
+        kind: result.ok ? ('out' as const) : ('err' as const),
+      })),
     ]);
     if (result.ok) {
-      setState(result.state);
+      setWorld(result.world);
       setHighlights(result.highlights);
     } else {
-      // 保留原 state
+      // 失败不改仓库；但若命令本身是 switchUser 成功路径已处理
+      setWorld(result.world);
       setHighlights(undefined);
     }
     setExplanation(result.explanation);
     setInput('');
-  }, [state]);
+  }, [world]);
 
   const onSubmit = useCallback(() => {
     run(input);
@@ -80,13 +102,45 @@ export default function App() {
     [history, histIdx],
   );
 
-  const onReset = useCallback(() => {
-    setState(createInitialDemoState());
+  const onSwitchUser = useCallback(
+    (id: UserId) => {
+      if (id === world.activeUser) return;
+      const result = switchUser(world, id);
+      setWorld(result.world);
+      setLines((prev) => [
+        ...prev,
+        { text: `— 切换到 ${USER_META[id].label} —`, kind: 'out' },
+        ...result.stdout.map((t) => ({ text: t, kind: 'out' as const })),
+      ]);
+      setExplanation(result.explanation);
+      setHighlights(undefined);
+      inputRef.current?.focus();
+    },
+    [world],
+  );
+
+  const onResetEmpty = useCallback(() => {
+    setWorld(createEmptyWorld());
+    setLines([...WELCOME, { text: '已重置：Alice / Bob 本地与远程均为空白。', kind: 'out' }]);
+    setExplanation(null);
+    setHighlights(undefined);
+    setInput('');
+    setHistIdx(-1);
+  }, []);
+
+  const onLoadDemo = useCallback(() => {
+    setWorld(createDemoWorld());
     setLines([
       ...WELCOME,
-      { text: '沙箱已重置为初始演示仓库。', kind: 'out' },
+      { text: '已加载演示：Alice / Bob 各有相同的 main 历史，origin/main 已存在。', kind: 'out' },
     ]);
-    setExplanation(null);
+    setExplanation({
+      title: '已加载协作演示',
+      summary:
+        '两人本地 main 历史相同，远程也有 main。可各自 switch -c 建 feature，push 后换人 pull。',
+      detail: '点顶栏 Alice / Bob 切换；终端里也可用 user bob。',
+      related: ['git switch -c feature', 'git push', 'user bob', 'git pull'],
+    });
     setHighlights(undefined);
     setInput('');
     setHistIdx(-1);
@@ -101,30 +155,40 @@ export default function App() {
     <div className="app">
       <TopBar
         branch={branchLabel}
-        onReset={onReset}
+        commitCount={Object.keys(state.commits).length}
+        activeUser={world.activeUser}
+        onSwitchUser={onSwitchUser}
+        onResetEmpty={onResetEmpty}
+        onLoadDemo={onLoadDemo}
         showHelp={showHelp}
         onToggleHelp={() => setShowHelp((v) => !v)}
       />
       {showHelp && (
         <div className="howto">
-          <strong>怎么用：</strong>
-          在下方终端输入 Git 命令 → 中间观察分支图变化 → 右侧阅读讲解。
-          左侧速查可点「填入终端」。可尝试：{' '}
-          <code>git switch -c feature</code> →{' '}
-          <code>git commit -m &quot;feat: work&quot;</code> →{' '}
-          <code>git switch main</code> → <code>git merge feature</code>
+          <strong>协作怎么练：</strong>
+          Alice：<code>git switch -c feature</code> → <code>git commit</code> →{' '}
+          <code>git push origin feature</code>；顶栏切 Bob → <code>git fetch</code> →{' '}
+          <code>git pull</code> 或 <code>git switch feature</code>。虚线蓝标签 ={' '}
+          <code>origin/*</code> 远程跟踪。
         </div>
       )}
       <div className="layout">
         <CheatsheetPanel onFill={onFill} />
         <main className="center" ref={bodyRef}>
-          <CommitGraph state={state} highlights={highlights} />
+          <CommitGraph
+            state={state}
+            remoteBranches={remoteRefs}
+            userLabel={userLabel}
+            highlights={highlights}
+            onFill={onFill}
+          />
           <TerminalPanel
             lines={lines}
             input={input}
             onInputChange={setInput}
             onSubmit={onSubmit}
             onHistory={onHistory}
+            onClear={() => setLines([])}
             inputRef={inputRef}
           />
         </main>
