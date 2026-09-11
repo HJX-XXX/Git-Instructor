@@ -45,7 +45,6 @@ export default function App() {
   const [histIdx, setHistIdx] = useState(-1);
   const [explanation, setExplanation] = useState<Explanation | null>(null);
   const [highlights, setHighlights] = useState<Highlights | undefined>(undefined);
-  const [showHelp, setShowHelp] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const bodyRef = useRef<HTMLDivElement | null>(null);
 
@@ -58,11 +57,6 @@ export default function App() {
   const remoteRefs = visibleRemoteRefs(world);
   const lines = termByUser[world.activeUser];
   const history = historyByUser[world.activeUser];
-
-  const branchLabel =
-    state.head.kind === 'branch'
-      ? `${userLabel} · ${state.head.name}${Object.keys(state.commits).length === 0 ? '（尚无提交）' : ''}`
-      : `${userLabel} · 游离 HEAD`;
 
   const appendTerm = useCallback((userId: UserId, extra: TermLine[]) => {
     setTermByUser((prev) => ({
@@ -191,24 +185,11 @@ export default function App() {
   return (
     <div className="app">
       <TopBar
-        branch={branchLabel}
-        commitCount={Object.keys(state.commits).length}
         activeUser={world.activeUser}
         onSwitchUser={onSwitchUser}
         onResetEmpty={onResetEmpty}
         onLoadDemo={onLoadDemo}
-        showHelp={showHelp}
-        onToggleHelp={() => setShowHelp((v) => !v)}
       />
-      {showHelp && (
-        <div className="howto">
-          <strong>协作怎么练：</strong>
-          Alice：<code>git switch -c feature</code> → <code>git commit</code> →{' '}
-          <code>git push origin feature</code>；顶栏切 Bob → <code>git fetch</code> → 图上会出现{' '}
-          <code>origin/feature</code>；再 <code>git pull</code> 或 <code>git switch feature</code>。
-          蓝色虚线 = 远程跟踪。
-        </div>
-      )}
       <div className="layout">
         <CheatsheetPanel onFill={onFill} />
         <main className="center" ref={bodyRef}>

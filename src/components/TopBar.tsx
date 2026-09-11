@@ -2,36 +2,18 @@ import type { UserId } from '../engine/types';
 import { USER_IDS, USER_META } from '../engine/world';
 
 interface Props {
-  branch: string;
-  commitCount: number;
   activeUser: UserId;
   onSwitchUser: (id: UserId) => void;
   onResetEmpty: () => void;
   onLoadDemo: () => void;
-  showHelp: boolean;
-  onToggleHelp: () => void;
 }
 
-export function TopBar({
-  branch,
-  commitCount,
-  activeUser,
-  onSwitchUser,
-  onResetEmpty,
-  onLoadDemo,
-  showHelp,
-  onToggleHelp,
-}: Props) {
+export function TopBar({ activeUser, onSwitchUser, onResetEmpty, onLoadDemo }: Props) {
   return (
     <header className="topbar">
       <div className="brand">
         <span className="brand-mark" aria-hidden />
-        <div>
-          <div className="brand-title">Git Instructor</div>
-          <div className="brand-sub">
-            双用户协作 · {commitCount} 个本地提交 · {branch}
-          </div>
-        </div>
+        <div className="brand-title">Git Instructor</div>
       </div>
       <div className="topbar-actions">
         <div
@@ -67,9 +49,6 @@ export function TopBar({
             })}
           </div>
         </div>
-        <button type="button" className="btn" onClick={onToggleHelp}>
-          {showHelp ? '收起说明' : '说明'}
-        </button>
         <button type="button" className="btn" onClick={onLoadDemo} title="两人相同的 main 历史">
           加载演示
         </button>
