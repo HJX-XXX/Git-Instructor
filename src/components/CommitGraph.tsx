@@ -70,12 +70,13 @@ export function CommitGraph({
     [layout.nodes],
   );
 
-  const width = Math.max(layout.width, 860);
-  const height = Math.max(layout.height, 280);
+  const width = Math.max(layout.width, 720);
+  // 高度贴合内容，避免大量空白
+  const height = Math.max(layout.height, empty ? 200 : 120);
   const viewBox = `0 0 ${width} ${height}`;
 
   const headBranch = state.head.kind === 'branch' ? state.head.name : null;
-  const commitCount = Object.keys(state.commits).length;
+  const commitCount = layout.nodes.length;
 
   // 当前分支在分支列表里优先显示，并标记 isCurrent
   const nodeBranches = (n: { branches: string[] }) => {
@@ -113,8 +114,8 @@ export function CommitGraph({
           <span className="lg" title="其它本地分支">
             <i className="lg-dot branch" /> 其它分支
           </span>
-          <span className="lg" title="共享远程 origin 上的分支">
-            <i className="lg-dot remote" /> origin/*
+          <span className="lg" title="共享远程上的分支（origin/xxx）">
+            <i className="lg-dot remote" /> 远程分支
           </span>
           <span className="lg">
             <i className="lg-line merge" /> 合并
@@ -187,7 +188,7 @@ export function CommitGraph({
               本地分支
             </text>
             <text x={ORIGIN_REF_X} y={30} className="col-label origin">
-              origin/*
+              远程分支
             </text>
 
             {layout.laneX.map((x, i) => (

@@ -73,9 +73,8 @@ export function layoutGraph(
   remoteBranches: Record<string, CommitId> = {},
 ): GraphLayout {
   const reach = reachableSet(state, remoteBranches);
-  const ids = Object.values(state.commits)
-    .filter((c) => reach.has(c.id))
-    .map((c) => c.id)
+  const ids = Object.keys(state.commits)
+    .filter((id) => reach.has(id) && state.commits[id])
     .sort((a, b) => {
       const ca = state.commits[a]!;
       const cb = state.commits[b]!;
@@ -167,7 +166,7 @@ export function layoutGraph(
   for (const id of ids) {
     const c = state.commits[id]!;
     c.parents.forEach((p, idx) => {
-      if (!reach.has(p) || !yOf.has(p)) return;
+      if (!yOf.has(p)) return;
       edges.push({ from: id, to: p, kind: idx === 0 ? 'first' : 'merge' });
     });
   }

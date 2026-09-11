@@ -131,7 +131,7 @@ export default function App() {
     const id = world.activeUser;
     setTermByUser((prev) => ({
       ...prev,
-      [id]: [{ text: `— 已清空 ${USER_META[id].label} 的终端输出 —`, kind: 'out' }],
+      [id]: [],
     }));
   }, [world.activeUser]);
 
@@ -140,10 +140,7 @@ export default function App() {
       if (id === world.activeUser) return;
       const result = switchUser(world, id);
       setWorld(result.world);
-      appendTerm(id, [
-        { text: `— 你正在查看 ${USER_META[id].label} 的终端 —`, kind: 'out' },
-        ...result.stdout.map((t) => ({ text: t, kind: 'out' as const })),
-      ]);
+      appendTerm(id, [{ text: `当前用户：${USER_META[id].label}`, kind: 'out' }]);
       setExplanation(result.explanation);
       setHighlights(undefined);
       setHistIdx(-1);

@@ -334,11 +334,10 @@ export function switchUser(world: WorldState, userId: UserId): WorldCommandResul
     });
   }
   const w = cloneWorld(world);
-  const from = USER_META[world.activeUser].label;
   w.activeUser = userId;
   return okWorld(
     w,
-    [`已切换用户：${from} → ${USER_META[userId].label}`],
+    [`当前用户：${USER_META[userId].label}`],
     {
       title: `已切换到 ${USER_META[userId].label}`,
       summary: `${USER_META[userId].label} 有自己的本地分支与提交。对方 push 的内容不会自动出现，需要 git fetch / git pull。`,

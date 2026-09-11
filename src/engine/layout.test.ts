@@ -63,4 +63,20 @@ describe('layoutGraph', () => {
     // old f1 may still exist in commits map but only one f1 in reachable graph
     expect(messages.filter((m) => m === 'f1')).toHaveLength(1);
   });
+
+  it('includes commits only reachable via remote tips', () => {
+    const s = runAll(createInitialDemoState(), [
+      'git switch -c feature',
+      'git commit -m "f1"',
+    ]);
+    const extraId = 'ffff001';
+    s.commits[extraId] = {
+      id: extraId,
+      parents: ['c33cf03'],
+      message: 'remote only',
+      createdAt: 99,
+    };
+    const layout = layoutGraph(s, { other: extraId });
+    expect(layout.nodes.map((n) => n.id)).toContain(extraId);
+  });
 });
