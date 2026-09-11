@@ -114,4 +114,30 @@ describe('multi-user world', () => {
     expect(w.remoteBranches.main).toBeDefined();
     expect(w.users.bob.commits[w.remoteBranches.main!]).toBeDefined();
   });
+
+  it('rebases local branch onto origin/<remote>', () => {
+    let w = createEmptyWorld();
+    // Alice 建 main 并推远程
+    w = runAll(w, ['git commit -m "base"', 'git push origin main']);
+    // Alice 再在 feature 上提交并 push
+    w = runAll(w, [
+      'git switch -c feature',
+      'git commit -m "alice work"',
+      'git push origin feature',
+    ]);
+    const featureTip = w.users.alice.branches.feature!;
+
+    // Bob 同步后在自己分支上提交，再 rebase 到 origin/feature
+    w = switchUser(w, 'bob').world;
+    w = runAll(w, ['git fetch', 'git pull']);
+    w = runAll(w, ['git switch -c mywork', 'git commit -m "bob work"']);
+    const before = w.users.bob.branches.mywork!;
+
+    const r = applyWorldCommand(w, 'git rebase origin/feature');
+    expect(r.ok).toBe(true);
+    const after = r.world.users.bob.branches.mywork!;
+    expect(after).not.toBe(before);
+    // 重放后 parent 应是远程 feature tip
+    expect(r.world.users.bob.commits[after]!.parents[0]).toBe(featureTip);
+  });
 });

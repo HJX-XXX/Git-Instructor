@@ -91,7 +91,7 @@ const HELP_LINES = [
   '  git merge <name>',
   '  git reset --soft|--mixed|--hard HEAD~n',
   '  git revert <hash>|HEAD',
-  '  git rebase <branch>',
+  '  git rebase <branch> | origin/<branch>',
   '  git log [--oneline]',
   '  help',
 ];

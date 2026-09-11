@@ -159,8 +159,18 @@ export function parseCommand(rawInput: string): ParsedCommand {
 
   if (cmd === 'rebase') {
     const names = rest.filter((a) => !a.startsWith('-'));
+    // git rebase origin <branch> / git rebase origin/<branch> / git rebase <branch>
+    if (names[0] === 'origin' && names[1]) {
+      return { type: 'rebase', target: `origin/${names[1]}` };
+    }
     const target = names[0];
-    if (!target) return { type: 'unknown', raw, hint: '用法：git rebase <分支名>' };
+    if (!target) {
+      return {
+        type: 'unknown',
+        raw,
+        hint: '用法：git rebase <分支> 或 git rebase origin/<远程分支>',
+      };
+    }
     return { type: 'rebase', target };
   }
 

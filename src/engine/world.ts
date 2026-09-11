@@ -349,6 +349,87 @@ export function switchUser(world: WorldState, userId: UserId): WorldCommandResul
   );
 }
 
+/** 支持 rebase 到本地分支或 origin/<远程分支>（自动 fetch 缺失对象） */
+function runRebaseWorld(
+  world: WorldState,
+  target: string,
+  raw: string,
+): WorldCommandResult {
+  const user = world.activeUser;
+  const local = world.users[user]!;
+
+  // 本地分支优先
+  if (local.branches[target] && !target.startsWith('origin/')) {
+    const result = applyCommand(local, raw);
+    world.users[user] = result.state;
+    return {
+      ok: result.ok,
+      world,
+      stdout: result.stdout,
+      explanation: result.explanation,
+      highlights: result.highlights,
+    };
+  }
+
+  let remoteName = target;
+  if (remoteName.startsWith('origin/')) remoteName = remoteName.slice('origin/'.length);
+
+  const remoteTip = world.remoteBranches[remoteName];
+  if (!remoteTip) {
+    return failWorld(
+      world,
+      [
+        `fatal: '${target}' 既不是本地分支，也不是已知远程分支`,
+        'hint: 先 git fetch，再 git rebase origin/<分支名>',
+      ],
+      {
+        title: '无法 rebase',
+        summary: `找不到 ${target}。远程分支要用 origin/ 前缀，例如 git rebase origin/feature。`,
+        related: ['git fetch', 'git remote -v', `git rebase origin/${remoteName}`],
+      },
+    );
+  }
+
+  // 确保远程提交在本地
+  if (!local.commits[remoteTip]) {
+    const fr = runFetch(world);
+    if (!fr.ok) return fr;
+    if (!local.commits[remoteTip]) {
+      return failWorld(world, [...fr.stdout, 'fatal: 远程提交尚未同步到本地'], {
+        title: '无法 rebase',
+        summary: '请先 git fetch 后再 rebase origin/<分支>。',
+        related: ['git fetch', `git rebase origin/${remoteName}`],
+      });
+    }
+  }
+
+  const temp = `origin/${remoteName}`;
+  local.branches[temp] = remoteTip;
+  const result = applyCommand(local, `git rebase ${temp}`);
+  delete result.state.branches[temp];
+  world.users[user] = result.state;
+
+  return {
+    ok: result.ok,
+    world,
+    stdout: [
+      `（已把 origin/${remoteName} 作为变基目标 tip ${remoteTip}）`,
+      ...result.stdout,
+    ],
+    explanation: {
+      title: result.ok ? `已 rebase 到 origin/${remoteName}` : result.explanation.title,
+      summary: result.ok
+        ? `把当前分支的独有提交重放到远程 ${remoteName}（${remoteTip}）之上。`
+        : result.explanation.summary,
+      detail:
+        result.explanation.detail ??
+        '真实写法：git fetch 后 git rebase origin/<branch>；本沙箱会自动拉取缺失的远程提交。',
+      related: [`git log --oneline`, `git push origin ${local.head.kind === 'branch' ? local.head.name : ''}`],
+    },
+    highlights: result.highlights,
+  };
+}
+
 /** 同步两人 commitSeq，降低短 hash 碰撞 */
 function syncSeq(world: WorldState): void {
   const maxSeq = Math.max(
@@ -386,6 +467,10 @@ export function applyWorldCommand(world: WorldState, input: string): WorldComman
   if (parsed.type === 'push') return runPush(w, parsed.branch);
   if (parsed.type === 'fetch') return runFetch(w);
   if (parsed.type === 'pull') return runPull(w, parsed.branch);
+
+  if (parsed.type === 'rebase') {
+    return runRebaseWorld(w, parsed.target, trimmed);
+  }
 
   if (parsed.type === 'remote_list') {
     const branches = Object.keys(w.remoteBranches);
