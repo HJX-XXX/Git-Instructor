@@ -12,12 +12,14 @@ export interface LayoutNode {
   remoteBranches: string[];
   isHead: boolean;
   colorIndex: number;
+  /** init = 时间轴底部的 git init 锚点；缺省为真实提交 */
+  kind?: 'commit' | 'init';
 }
 
 export interface LayoutEdge {
   from: CommitId;
   to: CommitId;
-  kind: 'first' | 'merge';
+  kind: 'first' | 'merge' | 'init';
 }
 
 export interface GraphLayout {
@@ -40,6 +42,8 @@ export const REF_X = 480;
 /** origin/* 远程标签列（与本地分开） */
 export const ORIGIN_REF_X = 700;
 export const MSG_MAX_CHARS = 48;
+/** 布局用的 git init 锚点（非真实 commit） */
+export const INIT_NODE_ID = '__git_init__';
 const PAD_TOP = 48;
 const PAD_BOTTOM = 36;
 
@@ -169,6 +173,31 @@ export function layoutGraph(
       if (!yOf.has(p)) return;
       edges.push({ from: id, to: p, kind: idx === 0 ? 'first' : 'merge' });
     });
+  }
+
+  // 原生 git init 锚点：始终在时间轴最下端
+  const hasCommits = ids.length > 0;
+  const initY = hasCommits ? PAD_TOP + ids.length * NODE_GAP_Y : PAD_TOP;
+  const unbornBranch =
+    !hasCommits && state.head.kind === 'branch' ? state.head.name : null;
+  const initNode: LayoutNode = {
+    id: INIT_NODE_ID,
+    lane: 0,
+    x: laneX[0] ?? RAIL_X,
+    y: initY,
+    message: 'git init',
+    branches: unbornBranch ? [unbornBranch] : [],
+    remoteBranches: [],
+    isHead: !hasCommits,
+    colorIndex: 0,
+    kind: 'init',
+  };
+  nodes.push(initNode);
+
+  for (const id of ids) {
+    if ((state.commits[id]?.parents.length ?? 0) === 0) {
+      edges.push({ from: id, to: INIT_NODE_ID, kind: 'init' });
+    }
   }
 
   const maxY = nodes.reduce((m, n) => Math.max(m, n.y), 0);

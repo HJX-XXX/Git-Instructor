@@ -1,5 +1,5 @@
 import { applyCommand } from './apply';
-import { createEmptyRepoState, createInitialDemoState } from './demo';
+import { createConceptDemoRepo, createEmptyRepoState, createInitialDemoState } from './demo';
 import { headCommitId, isAncestor } from './hash';
 import { parseCommand } from './parse';
 import type {
@@ -75,6 +75,20 @@ export function createDemoWorld(): WorldState {
     remoteCommits: Object.fromEntries(
       Object.entries(base.commits).map(([k, v]) => [k, { ...v, parents: [...v.parents] }]),
     ),
+  };
+}
+
+/** 关卡 0：本地 main + feature 分叉，无远程，专注看分支标签 */
+export function createConceptDemoWorld(): WorldState {
+  const base = createConceptDemoRepo();
+  return {
+    activeUser: 'alice',
+    users: {
+      alice: cloneRepoState(base),
+      bob: cloneRepoState(createEmptyRepoState()),
+    },
+    remoteBranches: {},
+    remoteCommits: {},
   };
 }
 

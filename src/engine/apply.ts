@@ -88,6 +88,8 @@ const HELP_LINES = [
   '  git branch -d|-D <name>',
   '  git switch <name>          （等价 checkout <name>）',
   '  git switch -c <name>       （等价 checkout -b <name>）',
+  '  git checkout <name>',
+  '  git checkout -b <name>',
   '  git merge <name>',
   '  git reset --soft|--mixed|--hard HEAD~n',
   '  git revert <hash>|HEAD',

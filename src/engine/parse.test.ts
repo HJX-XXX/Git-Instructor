@@ -30,6 +30,19 @@ describe('parseCommand', () => {
     });
   });
 
+  it('parses checkout and checkout -b as switch', () => {
+    expect(parseCommand('git checkout main')).toEqual({
+      type: 'switch',
+      name: 'main',
+      create: false,
+    });
+    expect(parseCommand('git checkout -b feature')).toEqual({
+      type: 'switch',
+      name: 'feature',
+      create: true,
+    });
+  });
+
   it('parses reset hard HEAD~2', () => {
     expect(parseCommand('git reset --hard HEAD~2')).toEqual({
       type: 'reset',

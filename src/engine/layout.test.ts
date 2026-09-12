@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { applyCommand } from './apply';
-import { createInitialDemoState } from './demo';
-import { layoutGraph } from './layout';
+import { createEmptyRepoState, createInitialDemoState } from './demo';
+import { INIT_NODE_ID, layoutGraph } from './layout';
 import type { RepoState } from './types';
 
 function runAll(state: RepoState, cmds: string[]): RepoState {
@@ -15,14 +15,52 @@ function runAll(state: RepoState, cmds: string[]): RepoState {
 }
 
 describe('layoutGraph', () => {
+  it('always includes a git init anchor', () => {
+    const empty = layoutGraph(createEmptyRepoState());
+    const initOnly = empty.nodes.filter((n) => n.kind === 'init');
+    expect(initOnly).toHaveLength(1);
+    expect(initOnly[0]!.id).toBe(INIT_NODE_ID);
+    expect(initOnly[0]!.isHead).toBe(true);
+    expect(initOnly[0]!.branches).toContain('main');
+
+    const demo = layoutGraph(createInitialDemoState());
+    const init = demo.nodes.find((n) => n.kind === 'init')!;
+    expect(init).toBeDefined();
+    expect(init.isHead).toBe(false);
+    // 根提交连到 init
+    const roots = demo.nodes.filter((n) => n.kind !== 'init' && n.message === 'init: 项目初始化');
+    expect(roots).toHaveLength(1);
+    const toInit = demo.edges.filter((e) => e.to === INIT_NODE_ID);
+    expect(toInit.map((e) => e.from)).toContain(roots[0]!.id);
+  });
+
   it('orders new commits above old ones', () => {
     const layout = layoutGraph(createInitialDemoState());
-    const ids = layout.nodes.map((n) => n.id);
+    const commits = layout.nodes.filter((n) => n.kind !== 'init');
+    const ids = commits.map((n) => n.id);
     expect(ids[0]).toBe('c33cf03');
     expect(ids[ids.length - 1]).toBe('a11ce01');
-    for (let i = 1; i < layout.nodes.length; i += 1) {
-      expect(layout.nodes[i]!.y).toBeGreaterThan(layout.nodes[i - 1]!.y);
+    for (let i = 1; i < commits.length; i += 1) {
+      expect(commits[i]!.y).toBeGreaterThan(commits[i - 1]!.y);
     }
+    const init = layout.nodes.find((n) => n.kind === 'init')!;
+    expect(init.y).toBeGreaterThan(commits[commits.length - 1]!.y);
+  });
+
+  it('keeps HEAD pointer target on branch tip after commit', () => {
+    const empty = createEmptyRepoState();
+    const before = layoutGraph(empty);
+    const initBefore = before.nodes.find((n) => n.kind === 'init')!;
+    expect(initBefore.isHead).toBe(true);
+    expect(initBefore.branches).toContain('main');
+
+    const s = runAll(empty, ['git commit -m "first"']);
+    const after = layoutGraph(s);
+    const heads = after.nodes.filter((n) => n.isHead);
+    expect(heads).toHaveLength(1);
+    expect(heads[0]!.kind).not.toBe('init');
+    expect(heads[0]!.branches).toContain('main');
+    expect(heads[0]!.id).toBe(s.branches.main);
   });
 
   it('marks HEAD node', () => {
@@ -57,7 +95,7 @@ describe('layoutGraph', () => {
       'git rebase main',
     ]);
     const layout = layoutGraph(s);
-    const messages = layout.nodes.map((n) => n.message);
+    const messages = layout.nodes.filter((n) => n.kind !== 'init').map((n) => n.message);
     expect(messages).toContain('f1');
     expect(messages).toContain('m1');
     // old f1 may still exist in commits map but only one f1 in reachable graph
