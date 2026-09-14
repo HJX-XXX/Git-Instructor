@@ -1,8 +1,17 @@
 import type { CommitId, RepoState } from './types';
 
-/** 由序号生成 7 位十六进制短 hash，便于教学辨认 */
+/** 教学用模拟短 hash，形如 a11ce01 / e55ab05，避免出现 1000001 这类顺号 */
+const HEX = '0123456789abcdef';
+
 export function shortHashFromSeq(seq: number): CommitId {
-  return (0x1000000 + (seq % 0xeffffff)).toString(16).slice(-7);
+  const n = Math.max(0, Math.floor(seq));
+  const a = HEX[10 + (n % 6)]!; // a-f
+  const d = String(n % 10);
+  const b = HEX[10 + ((n + 1) % 6)]!;
+  const mid = HEX[(n + 8) % 16]!;
+  const e = HEX[10 + ((n + 3) % 6)]!;
+  const last = String((n + 2) % 10);
+  return `${a}${d}${d}${b}${mid}${e}${last}`;
 }
 
 /** 在仓库中按前缀解析唯一 commit id；失败返回 null */

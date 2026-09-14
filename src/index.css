@@ -221,10 +221,66 @@ code,
   flex: 1 1 auto;
   min-height: 0;
   display: grid;
-  grid-template-columns: 272px minmax(0, 1fr) 300px;
+  grid-template-columns: 272px minmax(0, 1fr) auto;
   gap: 10px;
   padding: 10px 12px 12px;
   overflow: hidden;
+}
+
+.explanation {
+  width: 300px;
+  flex-shrink: 0;
+}
+
+.explanation.is-collapsed {
+  width: 40px;
+  padding: 0;
+  justify-content: stretch;
+}
+
+.explain-rail {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: #64748b;
+  height: 100%;
+  padding: 12px 0;
+}
+
+.explain-rail:hover {
+  background: #f8fafc;
+  color: #334155;
+}
+
+.explain-rail-text {
+  writing-mode: vertical-rl;
+  letter-spacing: 0.2em;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.explain-rail-chevron {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.explain-rail-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e2e8f0;
+  flex: 0 0 auto;
+}
+
+.explain-rail-dot.is-new {
+  background: #f97316;
+  box-shadow: 0 0 0 3px rgb(249 115 22 / 0.2);
 }
 
 .panel {
@@ -487,7 +543,7 @@ code,
   min-height: 0;
   overflow: auto;
   position: relative;
-  background: linear-gradient(180deg, #fafafa 0%, #fff 40%, #fff 100%);
+  background: linear-gradient(180deg, #f1f5f9 0%, #fff 36%, #fff 100%);
 }
 
 .graph-empty {
@@ -543,7 +599,7 @@ code,
 }
 
 .graph-msg.is-init {
-  fill: #64748b;
+  fill: #475569;
   font-style: italic;
 }
 
@@ -604,10 +660,25 @@ code,
 }
 
 .ref-badge.is-current rect {
-  fill: #ffedd5;
-  stroke: #f97316;
-  stroke-width: 2;
-  filter: drop-shadow(0 1px 2px rgb(249 115 22 / 0.35));
+  fill: #fff;
+  stroke-width: 1.6;
+  filter: none;
+}
+
+.col-hint .col-label-sub {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+}
+
+.col-hint:hover .col-label-sub {
+  opacity: 1;
+}
+
+.col-label-sub {
+  font-size: 9px;
+  fill: #94a3b8;
+  font-family: Inter, 'PingFang SC', sans-serif;
 }
 
 .head-pointer line {
@@ -630,7 +701,7 @@ code,
 
 .axis-label {
   font-size: 10px;
-  fill: #94a3b8;
+  fill: #64748b;
   font-family: Inter, 'PingFang SC', sans-serif;
 }
 
@@ -648,7 +719,7 @@ code,
 
 .col-label {
   font-size: 10px;
-  fill: #94a3b8;
+  fill: #64748b;
   font-family: Inter, 'PingFang SC', sans-serif;
   font-weight: 600;
 }
@@ -659,7 +730,7 @@ code,
 
 .graph-id {
   font-size: 11px;
-  fill: #94a3b8;
+  fill: #64748b;
 }
 
 .head-text {
@@ -1218,6 +1289,10 @@ code,
   border-color: #bbf7d0;
 }
 
+.concept-card.is-open {
+  cursor: pointer;
+}
+
 .concept-card-head {
   width: 100%;
   display: flex;
@@ -1244,6 +1319,11 @@ code,
 
 .concept-panel {
   padding: 0 10px 10px 30px;
+  cursor: pointer;
+}
+
+.concept-card.is-open:hover .concept-panel {
+  background: rgb(0 0 0 / 0.015);
 }
 
 .concept-body {
@@ -1259,6 +1339,47 @@ code,
   font-size: 12px;
   color: #4b5563;
   line-height: 1.55;
+}
+
+.concept-practice {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border: 1px dashed #fdba74;
+  border-radius: 8px;
+  background: #fff7ed;
+}
+
+.concept-practice-label {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #9a3412;
+  line-height: 1.45;
+}
+
+.concept-practice-cmd {
+  font-family: 'JetBrains Mono', ui-monospace, Consolas, monospace;
+  max-width: 100%;
+  white-space: normal;
+  text-align: left;
+  word-break: break-all;
+}
+
+.concept-practice-hint {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: #c2410c;
+}
+
+.concept-practice-reveal {
+  align-self: flex-start;
+  color: #9a3412;
+  border-color: #fdba74;
+  background: #fff;
+}
+
+.concept-practice-reveal:hover {
+  background: #ffedd5;
 }
 
 .concept-done-tag {
@@ -1600,12 +1721,12 @@ code,
 /* 进入关卡时的说明卡闪烁仍用 levelFlash（慢且长） */
 
 .graph-panel.demo-head .graph-node:not(.is-head-row) {
-  opacity: 0.28;
+  opacity: 0.62;
   transition: opacity 0.25s ease;
 }
 
 .graph-panel.demo-head .ref-badge:not(.is-current) {
-  opacity: 0.22;
+  opacity: 0.55;
 }
 
 /* HEAD：整条「HEAD 箭头 → main」一起闪 */
@@ -1619,11 +1740,11 @@ code,
 
 .graph-panel.demo-branch .graph-msg,
 .graph-panel.demo-branch .graph-id {
-  opacity: 0.4;
+  opacity: 0.72;
 }
 
 .graph-panel.demo-branch .graph-node circle {
-  opacity: 0.45;
+  opacity: 0.7;
 }
 
 /* 分支：main / feature 等所有本地分支签同步闪 */
@@ -1633,13 +1754,13 @@ code,
 }
 
 .graph-panel.demo-branch .head-pointer {
-  opacity: 0.35;
+  opacity: 0.65;
   animation: none;
 }
 
 /* 提交：左侧圆点更明显地闪；HEAD 保持可见 */
 .graph-panel.demo-commit .ref-badge:not(.is-current) {
-  opacity: 0.3;
+  opacity: 0.58;
 }
 
 .graph-panel.demo-commit .ref-badge.is-current {

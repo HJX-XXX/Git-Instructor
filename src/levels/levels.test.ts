@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { applyWorldCommand, createDemoWorld, createEmptyWorld, activeRepo } from '../engine/world';
+import {
+  applyWorldCommand,
+  createConceptDemoWorld,
+  createDemoWorld,
+  createEmptyWorld,
+  activeRepo,
+} from '../engine/world';
 import { LEVELS, getLevel } from './catalog';
 import {
   checkLevel0,
@@ -38,11 +44,42 @@ describe('level catalog', () => {
 });
 
 describe('level checks', () => {
-  it('L0 wins after reading concepts and status', () => {
-    const before = createDemoWorld();
-    const { w, log } = run(before, ['git status']);
-    const r = checkLevel0(w, log, ['head', 'commit', 'branch']);
+  it('L0 wins after switch feature, hotfix, and labeled commit', () => {
+    const start = createConceptDemoWorld();
+    const { w, log } = run(start, [
+      'git switch feature',
+      'git branch hotfix',
+      'git commit -m "这是我的提交"',
+    ]);
+    const r = checkLevel0(w, log);
     expect(r.win).toBe(true);
+  });
+
+  it('L0 fails without the required commit message', () => {
+    const start = createConceptDemoWorld();
+    const { w, log } = run(start, [
+      'git switch feature',
+      'git branch hotfix',
+      'git commit -m "随便写的"',
+    ]);
+    expect(checkLevel0(w, log).win).toBe(false);
+  });
+
+  it('L0 fails if HEAD never moves to feature', () => {
+    const start = createConceptDemoWorld();
+    const { w, log } = run(start, [
+      'git branch hotfix',
+      'git commit -m "这是我的提交"',
+    ]);
+    const r = checkLevel0(w, log);
+    expect(r.win).toBe(false);
+    expect(r.objectives[0]?.done).toBe(false);
+  });
+
+  it('L0 concept world still has feature; practice uses hotfix', () => {
+    const repo = activeRepo(createConceptDemoWorld());
+    expect(repo.branches.feature).toBeTruthy();
+    expect(repo.branches.hotfix).toBeUndefined();
   });
 
   it('L1 wins after first commit on empty repo', () => {

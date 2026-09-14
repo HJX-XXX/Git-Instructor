@@ -209,8 +209,8 @@ function runBranchCreate(state: RepoState, name: string): CommandResult {
   }
   state.branches[name] = tip;
   return ok(state, [`已创建分支 ${name} → ${tip}`], {
-    title: '已创建分支，但还没站上去',
-    summary: `分支 ${name} 只是一个指向 ${tip} 的指针。你仍在当前分支（${
+    title: '已创建分支，HEAD 未指向它',
+    summary: `分支 ${name} 只是一个指向 ${tip} 的指针。HEAD 仍指向当前分支（${
       state.head.kind === 'branch' ? state.head.name : 'HEAD'
     }），所以图上 ${name} 和当前分支会指到同一个提交——这很正常。`,
     detail: '要在 feature 上产生改动：先切换过去，再 commit。本沙箱没有真实文件，「改动」用提交来模拟。',
@@ -279,7 +279,7 @@ function runSwitch(
     state.branches[name] = tip;
     state.head = { kind: 'branch', name };
     return ok(state, [`已切换到新分支 ${name}`], {
-      title: '已站上新分支',
+      title: 'HEAD 已指向新分支',
       summary: `在 ${tip} 上创建了 ${name}，HEAD 已指向它。现在你在这个分支上。`,
       detail: '下一步：用 git commit 提交改动，图上只有 feature 会前进，main 停在原处。',
       related: [`git commit -m "feat: 在 ${name} 上的第一笔改动"`, 'git log --oneline'],
@@ -297,7 +297,7 @@ function runSwitch(
   const tip = state.branches[name]!;
   return ok(state, [`已切换到分支 ${name}`], {
     title: '切换分支',
-    summary: `HEAD 现在指向 ${name}（tip ${tip}）。之后的 commit 会记在 ${name} 上。`,
+    summary: `HEAD 现在指向 ${name}（最新提交 ${tip}）。之后的 commit 会记在 ${name} 上。`,
     detail: '切换不创建提交，只是把 HEAD 移到该分支指针。',
     related: [`git commit -m "feat: 在 ${name} 上的改动"`, 'git status'],
   }, { newHead: true });
@@ -339,7 +339,7 @@ function runMerge(state: RepoState, name: string): CommandResult {
       [`Fast-forwarding ${currentBranch} to ${fromTip}`],
       {
         title: 'Fast-forward 合并',
-        summary: `当前分支没有独有提交，指针直接前移到 ${name} 的 tip ${fromTip}。`,
+        summary: `当前分支没有独有提交，指针直接前移到 ${name} 的最新提交 ${fromTip}。`,
         detail: '没有产生新的 merge commit。若要强制生成合并节点，可用 git merge --no-ff（本沙箱未实现）。',
         related: [`git log --oneline`, 'git commit -m "..."'],
       },
@@ -422,7 +422,7 @@ function runReset(
     [`${state.head.name} 已重置到 ${target}（${mode}）`],
     {
       title: `reset --${mode}`,
-      summary: `当前分支 tip 从 ${tip} 回退到 ${target}。`,
+      summary: `当前分支最新提交从 ${tip} 回退到 ${target}。`,
       detail: modeNote + ' 旧提交可能仍存在于对象库，直到被回收。',
       related: ['git log --oneline', 'git status'],
     },
@@ -560,7 +560,7 @@ function runRebase(state: RepoState, name: string): CommandResult {
     ],
     {
       title: 'rebase 重放提交',
-      summary: `把 ${current} 独有的 ${created.length} 个提交复制到 ${name} tip 之上，并更新分支指针。`,
+      summary: `把 ${current} 独有的 ${created.length} 个提交复制到 ${name} 最新提交之上，并更新分支指针。`,
       detail: '旧提交对象可能仍在，但分支已指向新链；共享历史保持不变。',
       related: ['git log --oneline', `git merge ${name}`],
     },

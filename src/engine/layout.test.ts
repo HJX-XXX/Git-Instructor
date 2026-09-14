@@ -102,6 +102,20 @@ describe('layoutGraph', () => {
     expect(messages.filter((m) => m === 'f1')).toHaveLength(1);
   });
 
+  it('keeps hash column clear of lane rails', () => {
+    const s = runAll(createInitialDemoState(), [
+      'git switch -c feature',
+      'git commit -m "feat: a"',
+      'git switch main',
+      'git commit -m "fix: b"',
+    ]);
+    const layout = layoutGraph(s);
+    const lastRail = Math.max(...layout.laneX);
+    // hash 列结束位置必须在最右竖轨右侧，避免压住编号
+    expect(layout.idX).toBeGreaterThan(lastRail);
+    expect(layout.msgX).toBeGreaterThan(layout.idX);
+  });
+
   it('includes commits only reachable via remote tips', () => {
     const s = runAll(createInitialDemoState(), [
       'git switch -c feature',

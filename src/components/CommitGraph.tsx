@@ -3,7 +3,6 @@ import { headCommitId } from '../engine/hash';
 import type { Highlights, RepoState } from '../engine/types';
 import {
   layoutGraph,
-  MSG_X,
   REF_X,
   ORIGIN_REF_X,
   MSG_MAX_CHARS,
@@ -11,6 +10,19 @@ import {
 } from '../engine/layout';
 
 const LANE_COLORS = ['#16A34A', '#7C3AED', '#2563EB', '#D97706', '#DB2777', '#0D9488'];
+
+/** 分支名 → 稳定配色（与当前 tip 所在泳道无关，避免新建分支仍显示 main 的绿色） */
+function colorForBranch(name: string, allBranches: string[]): string {
+  const names = [...allBranches].sort((a, b) => {
+    const rank = (n: string) => (n === 'main' || n === 'master' ? 0 : 1);
+    const ra = rank(a);
+    const rb = rank(b);
+    if (ra !== rb) return ra - rb;
+    return a.localeCompare(b);
+  });
+  const i = names.indexOf(name);
+  return LANE_COLORS[(i < 0 ? 0 : i) % LANE_COLORS.length]!;
+}
 
 export type ConceptDemoFocus = 'head' | 'branch' | 'commit' | null;
 
@@ -215,6 +227,22 @@ export function CommitGraph({
             <text x={ORIGIN_REF_X} y={30} className="col-label origin">
               远程分支
             </text>
+            <g className="col-hint">
+              <text x={layout.idX} y={30} className="col-label" textAnchor="end">
+                提交编号
+              </text>
+              <text x={layout.idX} y={42} className="col-label-sub" textAnchor="end">
+                短 hash，可引用
+              </text>
+            </g>
+            <g className="col-hint">
+              <text x={layout.msgX} y={30} className="col-label">
+                提交说明
+              </text>
+              <text x={layout.msgX} y={42} className="col-label-sub">
+                git commit -m 写的内容
+              </text>
+            </g>
 
             {layout.laneX.map((x, i) => (
               <line
@@ -225,7 +253,7 @@ export function CommitGraph({
                 y2={Math.max(80, height - 24)}
                 stroke={LANE_COLORS[i % LANE_COLORS.length]!}
                 strokeWidth={2}
-                opacity={0.12}
+                opacity={0.28}
               />
             ))}
 
@@ -322,10 +350,10 @@ export function CommitGraph({
                     <circle cx={n.x} cy={n.y} r={13} fill="none" stroke="#F97316" strokeWidth="2.5" />
                   )}
 
-                  <text x={MSG_X - 8} y={n.y + 4} className="graph-id" textAnchor="end">
+                  <text x={layout.idX} y={n.y + 4} className="graph-id" textAnchor="end">
                     {isInit ? 'init' : n.id}
                   </text>
-                  <text x={MSG_X + 8} y={n.y + 4} className={`graph-msg${isInit ? ' is-init' : ''}`}>
+                  <text x={layout.msgX} y={n.y + 4} className={`graph-msg${isInit ? ' is-init' : ''}`}>
                     {msg}
                   </text>
 
@@ -341,6 +369,7 @@ export function CommitGraph({
                     }
                     return list.map((b, i) => {
                       const label = b.name;
+                      const branchColor = colorForBranch(label, Object.keys(state.branches));
                       const pw = pillWidth(label);
                       const x = REF_X;
                       const py2 = n.y - 11 + i * 26;
@@ -390,25 +419,17 @@ export function CommitGraph({
                                 />
                               </g>
                             )}
-                            <g
-                              className={`ref-badge${isMoved ? ' is-moved' : ''}${
-                                showHead || b.isCurrent ? ' is-current' : ''
-                              }`}
-                            >
-                              <title>
-                                {showHead || b.isCurrent
-                                  ? `分支 ${b.name}（HEAD 指向这里）`
-                                  : `本地分支 ${b.name}`}
-                              </title>
+                            <g className={`ref-badge${isMoved ? ' is-moved' : ''}`}>
+                              <title>{`本地分支 ${b.name}`}</title>
                               <rect
                                 x={x}
                                 y={py2}
                                 width={pw}
                                 height={22}
                                 rx={11}
-                                fill={showHead || b.isCurrent ? '#FFEDD5' : '#fff'}
-                                stroke={showHead || b.isCurrent ? '#F97316' : color}
-                                strokeWidth={showHead || b.isCurrent ? 2 : 1.6}
+                                fill="#fff"
+                                stroke={branchColor}
+                                strokeWidth={1.6}
                               />
                               <text
                                 x={x + pw / 2}
@@ -416,7 +437,7 @@ export function CommitGraph({
                                 textAnchor="middle"
                                 dominantBaseline="central"
                                 className="ref-text"
-                                fill={showHead || b.isCurrent ? '#C2410C' : color}
+                                fill={branchColor}
                               >
                                 {label}
                               </text>

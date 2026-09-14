@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import type { Explanation } from '../engine/types';
 
 interface Props {
@@ -6,11 +7,56 @@ interface Props {
 }
 
 export function ExplanationPanel({ explanation, onFill }: Props) {
+  const [collapsed, setCollapsed] = useState(false);
+  const [hasNew, setHasNew] = useState(false);
+  const prevKey = useRef<string | null>(null);
+  const key = explanation ? explanation.title + explanation.summary : '';
+
+  useEffect(() => {
+    if (key === prevKey.current) return;
+    prevKey.current = key;
+    if (collapsed) setHasNew(true);
+  }, [key, collapsed]);
+
+  if (collapsed) {
+    return (
+      <aside className="panel explanation is-collapsed" aria-label="刚刚发生了什么（已收纳）">
+        <button
+          type="button"
+          className="explain-rail"
+          title="展开「刚刚发生了什么」"
+          onClick={() => {
+            setCollapsed(false);
+            setHasNew(false);
+          }}
+        >
+          <span className={`explain-rail-dot${hasNew ? ' is-new' : ''}`} aria-hidden />
+          <span className="explain-rail-text">讲解</span>
+          <span className="explain-rail-chevron" aria-hidden>
+            ‹
+          </span>
+        </button>
+      </aside>
+    );
+  }
+
   return (
     <aside className="panel explanation">
       <header className="panel-head">
-        <h2>刚刚发生了什么</h2>
-        <p>命令执行后的中文讲解</p>
+        <div className="panel-head-row">
+          <div>
+            <h2>刚刚发生了什么</h2>
+            <p>命令执行后的中文讲解</p>
+          </div>
+          <button
+            type="button"
+            className="btn-mini"
+            title="收纳本栏"
+            onClick={() => setCollapsed(true)}
+          >
+            收起
+          </button>
+        </div>
       </header>
       <div className="explain-scroll">
         {!explanation ? (

@@ -36,6 +36,7 @@ export function LevelPanel({
 }: Props) {
   const [openHints, setOpenHints] = useState<number[]>([]);
   const [openConceptId, setOpenConceptId] = useState<string | null>(null);
+  const [revealedPractices, setRevealedPractices] = useState<string[]>([]);
   const won = checkResult?.win ?? false;
   const hasNext = LEVELS.some((l) => l.id === level.id + 1);
   const storyRef = useRef<HTMLButtonElement | null>(null);
@@ -84,24 +85,32 @@ export function LevelPanel({
           <section className="level-block">
             <h4>本节内容</h4>
             <div className="level-concepts">
-              {level.concepts.map((c) => {
-                const read = readConcepts.includes(c.id);
+              {level.concepts.map((c, ci) => {
+                const objDone = checkResult?.objectives[ci]?.done ?? false;
+                const read = readConcepts.includes(c.id) || objDone;
                 const active = activeConcept === c.id;
                 const open = openConceptId === c.id;
+                const toggleConcept = () => {
+                  const next = open ? null : c.id;
+                  setOpenConceptId(next);
+                  if (next) onFocusConcept(c.id);
+                };
                 return (
                   <article
                     key={c.id}
                     data-concept={c.id}
                     className={`concept-card${read ? ' is-read' : ''}${active ? ' is-active' : ''}${open ? ' is-open' : ''}`}
+                    onClick={() => {
+                      if (open) setOpenConceptId(null);
+                    }}
                   >
                     <button
                       type="button"
                       className="concept-card-head"
                       aria-expanded={open}
-                      onClick={() => {
-                        const next = open ? null : c.id;
-                        setOpenConceptId(next);
-                        if (next) onFocusConcept(c.id);
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleConcept();
                       }}
                     >
                       <span className="concept-chev" aria-hidden>
@@ -111,7 +120,9 @@ export function LevelPanel({
                         <span className="concept-term">{c.term}</span>
                         <span className="concept-teaser">{c.teaser}</span>
                       </span>
-                      {read && <span className="concept-done-tag">已懂</span>}
+                      {read && (
+                        <span className="concept-done-tag">{objDone ? '已完成' : '已懂'}</span>
+                      )}
                     </button>
                     {open && (
                       <div className="concept-panel">
@@ -123,13 +134,49 @@ export function LevelPanel({
                             ))}
                           </ul>
                         )}
+                        {c.practice && (
+                          <div className="concept-practice">
+                            <p className="concept-practice-label">{c.practice.label}</p>
+                            {!revealedPractices.includes(c.id) ? (
+                              <button
+                                type="button"
+                                className="btn-mini concept-practice-reveal"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setRevealedPractices((prev) =>
+                                    prev.includes(c.id) ? prev : [...prev, c.id],
+                                  );
+                                }}
+                              >
+                                想不起来了？显示命令
+                              </button>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  className="chip concept-practice-cmd"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onFill(c.practice!.command);
+                                  }}
+                                >
+                                  {c.practice.command}
+                                </button>
+                                <p className="concept-practice-hint">点击填入终端，回车执行</p>
+                              </>
+                            )}
+                          </div>
+                        )}
                         <button
                           type="button"
                           className={`btn-mini${read ? ' is-done' : ''}`}
                           disabled={read}
-                          onClick={() => onReadConcept(c.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onReadConcept(c.id);
+                          }}
                         >
-                          {read ? '已理解' : '标记已理解'}
+                          {objDone ? '命令已通过' : read ? '已理解' : '标记已理解'}
                         </button>
                       </div>
                     )}

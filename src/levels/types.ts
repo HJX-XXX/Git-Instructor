@@ -29,6 +29,11 @@ export interface LevelConcept {
   body: string;
   /** 弹层里的要点列表 */
   tips?: string[];
+  /** 实操提示：一点即可填入终端的命令 */
+  practice?: {
+    label: string;
+    command: string;
+  };
 }
 
 export interface LevelCheckCtx {

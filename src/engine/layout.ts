@@ -30,13 +30,22 @@ export interface GraphLayout {
   laneCount: number;
   /** 每条 lane 的 x 坐标，便于画竖轨 */
   laneX: number[];
-  /** 最新在上时的节点列表（已是该顺序） */
+  /** hash 列右对齐 x（提交编号结束位置） */
+  idX: number;
+  /** 提交说明列起始 x */
+  msgX: number;
 }
 
 const NODE_GAP_Y = 64;
-const LANE_GAP_X = 56;
+/** 泳道竖线间距：收紧，避免多分支时压到右侧 hash */
+const LANE_GAP_X = 36;
 const RAIL_X = 28;
-export const MSG_X = 180;
+/** hash 文本约 7 字符，预留列宽 */
+const HASH_COL_W = 56;
+/** hash 列与最右竖轨之间的安全间距 */
+const HASH_RAIL_GAP = 20;
+/** 默认说明列起点（lane 很少时） */
+const MSG_X_MIN = 180;
 /** 本地分支标签列 */
 export const REF_X = 480;
 /** origin/* 远程标签列（与本地分开） */
@@ -44,8 +53,15 @@ export const ORIGIN_REF_X = 700;
 export const MSG_MAX_CHARS = 48;
 /** 布局用的 git init 锚点（非真实 commit） */
 export const INIT_NODE_ID = '__git_init__';
-const PAD_TOP = 48;
+const PAD_TOP = 58;
 const PAD_BOTTOM = 36;
+
+function textColumnsForLanes(laneCount: number): { idX: number; msgX: number } {
+  const lastRail = RAIL_X + Math.max(0, laneCount - 1) * LANE_GAP_X;
+  const idX = lastRail + HASH_RAIL_GAP + HASH_COL_W;
+  const msgX = Math.max(MSG_X_MIN, idX + 16);
+  return { idX, msgX };
+}
 
 function reachableSet(
   state: RepoState,
@@ -94,11 +110,12 @@ export function layoutGraph(
   const colorOf = new Map<CommitId, number>();
   let nextLane = 0;
 
-  // 当前 HEAD 所在分支优先占 lane 0，便于一眼看到主链
+  // 分支泳道固定优先级：main/master 在最左，其余按名称；不因 HEAD 切换而整体换道
   const branchNames = Object.keys(state.branches).sort((a, b) => {
-    const headName = state.head.kind === 'branch' ? state.head.name : '';
-    if (a === headName) return -1;
-    if (b === headName) return 1;
+    const rank = (n: string) => (n === 'main' ? 0 : n === 'master' ? 1 : 2);
+    const ra = rank(a);
+    const rb = rank(b);
+    if (ra !== rb) return ra - rb;
     return a.localeCompare(b);
   });
 
@@ -201,6 +218,7 @@ export function layoutGraph(
   }
 
   const maxY = nodes.reduce((m, n) => Math.max(m, n.y), 0);
+  const { idX, msgX } = textColumnsForLanes(laneCount);
 
   return {
     nodes,
@@ -209,5 +227,7 @@ export function layoutGraph(
     height: maxY + PAD_BOTTOM,
     laneCount,
     laneX,
+    idX,
+    msgX,
   };
 }

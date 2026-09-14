@@ -64,6 +64,11 @@ export function ChapterLearnModal({
                   ))}
                 </ul>
               )}
+              {c.practice && (
+                <p className="chapter-practice">
+                  实操目标：{c.practice.label}（命令可在卡内「显示命令」后查看）
+                </p>
+              )}
               <button
                 type="button"
                 className="btn-mini chapter-goto"
