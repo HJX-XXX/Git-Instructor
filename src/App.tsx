@@ -82,7 +82,7 @@ function bootExplanation(profile: SkillProfile | null, levelId: number): Explana
   const lv = getLevel(levelId) ?? LEVELS[0];
   if (!lv) return null;
   return {
-    title: `第 ${lv.id} 关 · ${lv.title}`,
+    title: lv.id === 0 ? `导读 · ${lv.title}` : `第 ${lv.id} 关 · ${lv.title}`,
     summary: lv.story,
     detail: '完成左侧全部目标即可通关。命令执行后的讲解仍会显示在这里。',
     related: lv.suggestedCommands.slice(0, 3),

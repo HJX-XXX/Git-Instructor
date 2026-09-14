@@ -78,8 +78,50 @@ export function LevelPanel({
           <div className="level-kicker">{level.id === 0 ? '导读' : `第 ${level.id} 关`}</div>
           <h3 className="level-title">{level.title}</h3>
           <p className="level-story">{level.story}</p>
-          <span className="level-open-hint">点开看本章完整说明</span>
+          <span className="level-open-hint">查看本关学习内容</span>
         </button>
+
+        <section className="level-block">
+          <h4>目标</h4>
+          <ul className="level-objectives">
+            {(checkResult?.objectives ?? level.objectiveLabels.map((label, i) => ({
+              id: String(i + 1),
+              label,
+              done: false,
+            }))).map((o) => (
+              <li key={o.id} className={o.done ? 'is-done' : undefined}>
+                <span className="obj-mark" aria-hidden>
+                  {o.done ? '✓' : '○'}
+                </span>
+                <span>{o.label}</span>
+              </li>
+            ))}
+          </ul>
+          {checkResult && !won && (
+            <p className="level-feedback">{checkResult.feedback}</p>
+          )}
+          {won && (
+            <div className="level-win-box">
+              <p className="level-win-title">本关完成</p>
+              <p className="level-win-summary">{level.winExplanation.summary}</p>
+              <div className="level-win-actions">
+                {hasNext && (
+                  <button type="button" className="btn btn-primary" onClick={onNextLevel}>
+                    下一关
+                  </button>
+                )}
+                {!hasNext && (
+                  <button type="button" className="btn btn-primary" onClick={onEnterFree}>
+                    进入自由练习
+                  </button>
+                )}
+                <button type="button" className="btn" onClick={onResetLevel}>
+                  再练一次
+                </button>
+              </div>
+            </div>
+          )}
+        </section>
 
         {level.concepts && level.concepts.length > 0 && (
           <section className="level-block">
@@ -167,17 +209,19 @@ export function LevelPanel({
                             )}
                           </div>
                         )}
-                        <button
-                          type="button"
-                          className={`btn-mini${read ? ' is-done' : ''}`}
-                          disabled={read}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onReadConcept(c.id);
-                          }}
-                        >
-                          {objDone ? '命令已通过' : read ? '已理解' : '标记已理解'}
-                        </button>
+                        {!c.practice && (
+                          <button
+                            type="button"
+                            className={`btn-mini${read ? ' is-done' : ''}`}
+                            disabled={read}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onReadConcept(c.id);
+                            }}
+                          >
+                            {objDone ? '已达成' : read ? '已理解' : '标记已理解'}
+                          </button>
+                        )}
                       </div>
                     )}
                   </article>
@@ -186,48 +230,6 @@ export function LevelPanel({
             </div>
           </section>
         )}
-
-        <section className="level-block">
-          <h4>目标</h4>
-          <ul className="level-objectives">
-            {(checkResult?.objectives ?? level.objectiveLabels.map((label, i) => ({
-              id: String(i + 1),
-              label,
-              done: false,
-            }))).map((o) => (
-              <li key={o.id} className={o.done ? 'is-done' : undefined}>
-                <span className="obj-mark" aria-hidden>
-                  {o.done ? '✓' : '○'}
-                </span>
-                <span>{o.label}</span>
-              </li>
-            ))}
-          </ul>
-          {checkResult && !won && (
-            <p className="level-feedback">{checkResult.feedback}</p>
-          )}
-          {won && (
-            <div className="level-win-box">
-              <p className="level-win-title">本关完成</p>
-              <p className="level-win-summary">{level.winExplanation.summary}</p>
-              <div className="level-win-actions">
-                {hasNext && (
-                  <button type="button" className="btn btn-primary" onClick={onNextLevel}>
-                    下一关
-                  </button>
-                )}
-                {!hasNext && (
-                  <button type="button" className="btn btn-primary" onClick={onEnterFree}>
-                    进入自由练习
-                  </button>
-                )}
-                <button type="button" className="btn" onClick={onResetLevel}>
-                  再练一次
-                </button>
-              </div>
-            </div>
-          )}
-        </section>
 
         <section className="level-block">
           <h4>建议命令</h4>

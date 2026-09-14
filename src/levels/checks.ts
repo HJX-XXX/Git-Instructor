@@ -83,16 +83,16 @@ export function checkLevel0(
 /** L1：空仓库里完成第一次提交 */
 export function checkLevel1(_before: WorldState, after: WorldState): LevelCheckResult {
   const repo = activeRepo(after);
-  const labels = ['在 main 上产生至少 1 个提交', 'HEAD 仍指向 main'];
+  const labels = ['在 main 上产生至少 1 个提交'];
   const tip = repo.branches.main;
   const hasCommit = Boolean(tip && repo.commits[tip]);
   const onMain = repo.head.kind === 'branch' && repo.head.name === 'main';
   return result(
     labels,
-    [hasCommit, onMain],
-    hasCommit
-      ? '还需要站在 main 上（git switch main）。'
-      : '还没有提交。试试 git commit -m "init: 第一次提交"。',
+    [hasCommit && onMain],
+    hasCommit && !onMain
+      ? '提交已在，但 HEAD 不在 main。可重置本关后在 main 上再试。'
+      : '还没有提交。先自己想命令；想不起来再点卡内「显示命令」。',
   );
 }
 
@@ -115,8 +115,53 @@ export function checkLevel2(
   return result(labels, dones, feedback);
 }
 
-/** L3：建分支但不切换 */
-export function checkLevel3(_before: WorldState, after: WorldState): LevelCheckResult {
+function ranOkMatch(log: LevelLogEntry[], match: (input: string) => boolean): boolean {
+  return log.some((e) => e.ok && match(e.input.trim().toLowerCase()));
+}
+
+function ranStatus(log: LevelLogEntry[]): boolean {
+  return ranOkMatch(log, (t) => t === 'status' || t === 'git status' || t.endsWith(' status') || /\sstatus$/.test(t));
+}
+
+function ranLog(log: LevelLogEntry[]): boolean {
+  return ranOkMatch(log, (t) => /(^|\s)log(\s|$)/.test(t));
+}
+
+function ranCreateFeature(log: LevelLogEntry[]): boolean {
+  return ranOkMatch(log, (t) => {
+    if (t.includes('-d') || t.includes('-D')) return false;
+    return (
+      t === 'git branch feature' ||
+      t === 'branch feature' ||
+      t === 'git switch -c feature' ||
+      t === 'switch -c feature' ||
+      t === 'git checkout -b feature' ||
+      t === 'checkout -b feature'
+    );
+  });
+}
+
+function ranSwitchToFeature(log: LevelLogEntry[]): boolean {
+  return ranOkMatch(log, (t) => {
+    return (
+      t === 'git switch feature' ||
+      t === 'switch feature' ||
+      t === 'git checkout feature' ||
+      t === 'checkout feature' ||
+      t === 'git switch -c feature' ||
+      t === 'switch -c feature' ||
+      t === 'git checkout -b feature' ||
+      t === 'checkout -b feature'
+    );
+  });
+}
+
+/** L3：建分支但不切换——三张卡各自要执行对应命令 */
+export function checkLevel3(
+  _before: WorldState,
+  after: WorldState,
+  log: LevelLogEntry[],
+): LevelCheckResult {
   const repo = activeRepo(after);
   const labels = [
     '创建分支 feature',
@@ -128,18 +173,33 @@ export function checkLevel3(_before: WorldState, after: WorldState): LevelCheckR
   const created = Boolean(featureTip && repo.commits[featureTip]);
   const stillOnMain = repo.head.kind === 'branch' && repo.head.name === 'main';
   const sameTip = created && Boolean(mainTip) && featureTip === mainTip;
-  const dones = [created, stillOnMain, sameTip];
-  let feedback = '先 git branch feature，不要 switch。';
-  if (created && !stillOnMain) {
-    feedback = '已经建了分支，但 HEAD 不在 main。可 git switch main 再确认两者最新提交相同。';
-  } else if (created && stillOnMain && !sameTip) {
-    feedback = 'feature 存在但与 main 最新提交不同。可重置本关后只执行 git branch feature。';
+
+  const didCreate = created && ranCreateFeature(log);
+  const didCheckStatus = stillOnMain && ranStatus(log);
+  const didObserve = sameTip && ranLog(log);
+
+  const dones = [didCreate, didCheckStatus, didObserve];
+  let feedback = '按卡片顺序实操：先创建 feature，再用 status 确认，再用 log 观察。';
+  if (!didCreate) {
+    feedback = '先创建分支 feature（不要切换）。可点「显示命令」查看。';
+  } else if (!stillOnMain) {
+    feedback = 'HEAD 不在 main。请切回 main 后，只保留「建分支、不切换」这一关要求。';
+  } else if (!didCheckStatus) {
+    feedback = 'feature 已创建。执行 status，确认 HEAD 仍指向 main。';
+  } else if (!sameTip) {
+    feedback = 'feature 与 main 最新提交不同。可重置本关后只执行创建分支。';
+  } else if (!didObserve) {
+    feedback = '执行 log --oneline，观察两分支尚未分叉。';
   }
   return result(labels, dones, feedback);
 }
 
-/** L4：站上 feature 并在其上提交，main 不动 */
-export function checkLevel4(before: WorldState, after: WorldState): LevelCheckResult {
+/** L4：HEAD 指向 feature 并在其上提交，main 不动 */
+export function checkLevel4(
+  before: WorldState,
+  after: WorldState,
+  log: LevelLogEntry[],
+): LevelCheckResult {
   const b = activeRepo(before);
   const a = activeRepo(after);
   const labels = [
@@ -156,17 +216,31 @@ export function checkLevel4(before: WorldState, after: WorldState): LevelCheckRe
     featureTip !== mainTip &&
     !isAncestor(a.commits, featureTip!, mainTip!);
   const mainUnmoved = Boolean(mainBefore) && a.branches.main === mainBefore;
-  const dones = [onFeature, featureAhead, mainUnmoved];
-  let feedback = '先 git switch -c feature（或 switch feature），再 commit 一笔。';
-  if (!onFeature) feedback = 'HEAD 还不在 feature 上，先 git switch feature。';
-  else if (!featureAhead) {
-    feedback = '在 feature 上执行 git commit -m "feat: ..."，让它比 main 多一个点。';
-  } else if (!mainUnmoved) feedback = 'main 的最新提交不应变化。可重置本关重做。';
+
+  const didSwitch = onFeature && ranSwitchToFeature(log);
+  const didCommit = featureAhead && ranOkMatch(log, (t) => t.includes('commit'));
+  const didObserve = didCommit && mainUnmoved && ranLog(log);
+
+  const dones = [didSwitch, didCommit, didObserve];
+  let feedback = '按卡片顺序：先把 HEAD 指向 feature，再提交，最后用 log 观察。';
+  if (!didSwitch) {
+    feedback = '先让 HEAD 指向 feature（可新建并切换）。';
+  } else if (!didCommit) {
+    feedback = '在 feature 上提交一笔，让它比 main 多一个点。';
+  } else if (!mainUnmoved) {
+    feedback = 'main 的最新提交不应变化。可重置本关重做。';
+  } else if (!didObserve) {
+    feedback = '执行 log --oneline，观察分叉：只有 feature 前进了。';
+  }
   return result(labels, dones, feedback);
 }
 
 /** L5：main 落后 feature，merge 后 fast-forward */
-export function checkLevel5(before: WorldState, after: WorldState): LevelCheckResult {
+export function checkLevel5(
+  before: WorldState,
+  after: WorldState,
+  log: LevelLogEntry[],
+): LevelCheckResult {
   const b = activeRepo(before);
   const a = activeRepo(after);
   const labels = [
@@ -184,15 +258,30 @@ export function checkLevel5(before: WorldState, after: WorldState): LevelCheckRe
     mainAfter !== mainBefore;
   const tip = mainAfter ? a.commits[mainAfter] : undefined;
   const noMergeCommit = Boolean(tip) && tip!.parents.length <= 1;
-  const dones = [onMain && ff, ff && onMain, ff && noMergeCommit];
-  let feedback = '切到 main 后执行 git merge feature，应出现 Fast-forward。';
-  if (!onMain) feedback = '先 git switch main，再 merge feature。';
-  else if (!ff) feedback = '在 main 上执行 git merge feature。';
+  const ranMerge = ranOkMatch(log, (t) => /(^|\s)merge(\s|$)/.test(t));
+  // 卡片1：切到 main（或本就在 main 时用 status 确认）
+  const card1 =
+    onMain &&
+    (ranOkMatch(log, (t) => t.includes('switch main') || t.includes('checkout main')) ||
+      ranStatus(log));
+  const card2 = ff && ranMerge;
+  const card3 = card2 && noMergeCommit && ranLog(log);
+  const dones = [card1, card2, card3];
+  let feedback = '按卡片顺序：切到 main → merge → 用 log 观察无新圆点。';
+  if (!onMain) feedback = '先让 HEAD 指向 main。';
+  else if (!card1) feedback = '执行 status 确认在 main 上，或先切换到 main。';
+  else if (!ff) feedback = '在 main 上执行 merge，应出现 Fast-forward。';
+  else if (!ranMerge) feedback = '请执行 merge 命令。';
+  else if (!ranLog(log)) feedback = '执行 log --oneline，确认没有新的 merge 圆点。';
   return result(labels, dones, feedback);
 }
 
 /** L6：双方都有提交，merge 生成双父节点 */
-export function checkLevel6(_before: WorldState, after: WorldState): LevelCheckResult {
+export function checkLevel6(
+  _before: WorldState,
+  after: WorldState,
+  log: LevelLogEntry[],
+): LevelCheckResult {
   const a = activeRepo(after);
   const labels = [
     'HEAD 在 main 上',
@@ -206,16 +295,31 @@ export function checkLevel6(_before: WorldState, after: WorldState): LevelCheckR
   const featureTip = a.branches.feature;
   const containsFeature =
     isMerge && Boolean(featureTip) && isAncestor(a.commits, featureTip!, tipId!);
-  const dones = [onMain, isMerge, containsFeature];
-  let feedback = '双方各自 commit 后，在 main 上 git merge feature。';
-  if (!onMain) feedback = '先 git switch main。';
-  else if (!isMerge) feedback = '在 main 上执行 git merge feature，应生成双父节点。';
+
+  const ranMerge = ranOkMatch(log, (t) => /(^|\s)merge(\s|$)/.test(t));
+  const ranMainCheck = onMain && (ranStatus(log) || ranOkMatch(log, (t) => t.includes('switch main') || t.includes('checkout main')));
+
+  const dones = [
+    ranMainCheck,
+    isMerge && ranMerge,
+    containsFeature && isMerge && ranLog(log),
+  ];
+  let feedback = '按卡片顺序：确认在 main 上，再 merge，最后用 log 观察双父节点。';
+  if (!onMain) feedback = '先让 HEAD 指向 main。';
+  else if (!ranMainCheck) feedback = '执行 status 确认 HEAD 在 main 上。';
+  else if (!isMerge) feedback = '在 main 上执行 merge，应生成双父节点。';
+  else if (!ranMerge) feedback = '请执行 merge 命令完成合并。';
   else if (!containsFeature) feedback = 'merge 结果应能追溯到 feature 的最新提交。可重置本关重做。';
+  else if (!ranLog(log)) feedback = '执行 log --oneline，确认能追溯到 feature。';
   return result(labels, dones, feedback);
 }
 
 /** L7：用 reset 把 main 往回拨一步 */
-export function checkLevel7(before: WorldState, after: WorldState): LevelCheckResult {
+export function checkLevel7(
+  before: WorldState,
+  after: WorldState,
+  log: LevelLogEntry[],
+): LevelCheckResult {
   const b = activeRepo(before);
   const a = activeRepo(after);
   const labels = [
@@ -228,10 +332,23 @@ export function checkLevel7(before: WorldState, after: WorldState): LevelCheckRe
   const mainAfter = a.branches.main;
   const onMain = a.head.kind === 'branch' && a.head.name === 'main';
   const rolledBack = Boolean(parent) && mainAfter === parent;
-  const dones = [rolledBack, onMain, rolledBack && onMain];
-  let feedback = '在 main 上执行 git reset --hard HEAD~1（也可用 --soft）。';
-  if (!rolledBack) feedback = 'main 还停在最新提交。执行 git reset --hard HEAD~1。';
-  else if (!onMain) feedback = 'HEAD 应仍在 main 上。';
+  const ranReset = ranOkMatch(log, (t) => t.includes('reset'));
+  const didSeeLog = ranLog(log);
+  const didConfirm = onMain && ranStatus(log);
+
+  const dones = [rolledBack && ranReset, didConfirm, rolledBack && ranReset && onMain];
+  let feedback = '按卡片顺序：先 log 看清历史，再 reset 回退，最后 status 确认。';
+  if (!didSeeLog && !rolledBack) {
+    feedback = '先执行 log --oneline，看清当前最新提交。';
+  } else if (!rolledBack) {
+    feedback = '在 main 上执行 reset，把最新提交拨回上一个。';
+  } else if (!ranReset) {
+    feedback = '请执行 reset 命令完成回退。';
+  } else if (!onMain) {
+    feedback = 'HEAD 应仍在 main 上。';
+  } else if (!didConfirm) {
+    feedback = '执行 status，确认 HEAD 仍在 main。';
+  }
   return result(labels, dones, feedback);
 }
 

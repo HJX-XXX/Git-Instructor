@@ -41,6 +41,18 @@ describe('level catalog', () => {
     expect(getLevel(2)?.title).toContain('状态');
     expect(getLevel(5)?.title).toContain('Fast-forward');
   });
+
+  it('every level has practice cards matching objectives', () => {
+    for (const lv of LEVELS) {
+      expect(lv.concepts?.length, `L${lv.id} concepts`).toBeGreaterThan(0);
+      expect(lv.concepts!.length, `L${lv.id} concepts vs objectives`).toBe(
+        lv.objectiveLabels.length,
+      );
+      for (const c of lv.concepts!) {
+        expect(c.practice?.command, `L${lv.id} ${c.id}`).toBeTruthy();
+      }
+    }
+  });
 });
 
 describe('level checks', () => {
@@ -85,7 +97,9 @@ describe('level checks', () => {
   it('L1 wins after first commit on empty repo', () => {
     const before = createEmptyWorld();
     const { w } = run(before, ['git commit -m "init: x"']);
-    expect(checkLevel1(before, w).win).toBe(true);
+    const r = checkLevel1(before, w);
+    expect(r.win).toBe(true);
+    expect(r.objectives).toHaveLength(1);
   });
 
   it('L2 wins after status and log', () => {
@@ -94,27 +108,39 @@ describe('level checks', () => {
     expect(checkLevel2(before, w, log).win).toBe(true);
   });
 
-  it('L3 wins with branch without switch', () => {
+  it('L3 requires create, status, and log in sequence', () => {
     const before = createDemoWorld();
-    const { w } = run(before, ['git branch feature']);
-    expect(checkLevel3(before, w).win).toBe(true);
+    const afterCreate = run(before, ['git branch feature']);
+    expect(checkLevel3(before, afterCreate.w, afterCreate.log).win).toBe(false);
+    const afterStatus = run(afterCreate.w, ['git status']);
+    expect(
+      checkLevel3(before, afterStatus.w, [...afterCreate.log, ...afterStatus.log]).win,
+    ).toBe(false);
+    const afterLog = run(afterStatus.w, ['git log --oneline']);
+    const r = checkLevel3(
+      before,
+      afterLog.w,
+      [...afterCreate.log, ...afterStatus.log, ...afterLog.log],
+    );
+    expect(r.win).toBe(true);
   });
 
-  it('L4 wins after switch -c feature and commit', () => {
+  it('L4 wins after switch -c feature, commit, and log', () => {
     const before = createDemoWorld();
-    const { w } = run(before, [
+    const { w, log } = run(before, [
       'git switch -c feature',
       'git commit -m "feat: x"',
+      'git log --oneline',
     ]);
-    const r = checkLevel4(before, w);
+    const r = checkLevel4(before, w, log);
     expect(r.win).toBe(true);
     expect(activeRepo(w).head).toEqual({ kind: 'branch', name: 'feature' });
   });
 
   it('L4 fails if only branch without commit', () => {
     const before = createDemoWorld();
-    const { w } = run(before, ['git branch feature']);
-    expect(checkLevel4(before, w).win).toBe(false);
+    const { w, log } = run(before, ['git branch feature']);
+    expect(checkLevel4(before, w, log).win).toBe(false);
   });
 
   it('L5 wins on fast-forward merge', () => {
@@ -122,9 +148,9 @@ describe('level checks', () => {
       'git switch -c feature',
       'git commit -m "feat: a"',
       'git switch main',
-    ]).w;
-    const { w } = run(before, ['git merge feature']);
-    expect(checkLevel5(before, w).win).toBe(true);
+    ]);
+    const { w, log } = run(before.w, ['git status', 'git merge feature', 'git log --oneline']);
+    expect(checkLevel5(before.w, w, [...before.log, ...log]).win).toBe(true);
   });
 
   it('L6 wins on merge commit', () => {
@@ -133,21 +159,30 @@ describe('level checks', () => {
       'git commit -m "feat: a"',
       'git switch main',
       'git commit -m "fix: b"',
-    ]).w;
-    const { w } = run(before, ['git merge feature']);
-    expect(checkLevel6(before, w).win).toBe(true);
+    ]);
+    const { w, log } = run(before.w, [
+      'git status',
+      'git merge feature',
+      'git log --oneline',
+    ]);
+    expect(checkLevel6(before.w, w, [...before.log, ...log]).win).toBe(true);
   });
 
-  it('L7 wins after reset HEAD~1', () => {
-    const before = run(createDemoWorld(), ['git commit -m "oops"']).w;
-    const { w } = run(before, ['git reset --hard HEAD~1']);
-    expect(checkLevel7(before, w).win).toBe(true);
+  it('L7 wins after log, reset HEAD~1, and status', () => {
+    const before = run(createDemoWorld(), ['git commit -m "oops"']);
+    const { w, log } = run(before.w, [
+      'git log --oneline',
+      'git reset --hard HEAD~1',
+      'git status',
+    ]);
+    expect(checkLevel7(before.w, w, [...before.log, ...log]).win).toBe(true);
   });
 
   it('L8 wins after alice push and bob pull', () => {
     let w = createDemoWorld();
     const before = w;
-    w = run(w, ['git commit -m "alice: shared"', 'git push origin main']).w;
+    const r1 = run(w, ['git commit -m "alice: shared"', 'git push origin main']);
+    w = r1.w;
     w = applyWorldCommand(w, 'user bob').world;
     w = run(w, ['git pull']).w;
     expect(checkLevel8(before, w).win).toBe(true);
@@ -161,18 +196,24 @@ describe('level checks', () => {
 
     const l5 = getLevel(5)!;
     const b5 = l5.startWorld();
-    const a5 = run(b5, ['git switch main', 'git merge feature']).w;
-    expect(l5.check({ before: b5, after: a5, log: [] }).win).toBe(true);
+    const a5 = run(b5, ['git status', 'git merge feature', 'git log --oneline']);
+    expect(
+      l5.check({ before: b5, after: a5.w, log: a5.log }).win,
+    ).toBe(true);
 
     const l6 = getLevel(6)!;
     const b6 = l6.startWorld();
-    const a6 = run(b6, ['git merge feature']).w;
-    expect(l6.check({ before: b6, after: a6, log: [] }).win).toBe(true);
+    const a6 = run(b6, ['git status', 'git merge feature', 'git log --oneline']);
+    expect(
+      l6.check({ before: b6, after: a6.w, log: a6.log }).win,
+    ).toBe(true);
 
     const l7 = getLevel(7)!;
     const b7 = l7.startWorld();
-    const a7 = run(b7, ['git reset --hard HEAD~1']).w;
-    expect(l7.check({ before: b7, after: a7, log: [] }).win).toBe(true);
+    const a7 = run(b7, ['git log --oneline', 'git reset --hard HEAD~1', 'git status']);
+    expect(
+      l7.check({ before: b7, after: a7.w, log: a7.log }).win,
+    ).toBe(true);
 
     const l8 = getLevel(8)!;
     const b8 = l8.startWorld();
