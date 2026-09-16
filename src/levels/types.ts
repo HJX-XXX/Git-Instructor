@@ -45,8 +45,16 @@ export interface LevelCheckCtx {
 
 export interface LevelDef {
   id: number;
+  /** 所属阶段 id，与 STAGES 对应 */
+  stageId: string;
   title: string;
+  /** 左栏关卡说明：一句话学习内容 */
   story: string;
+  /** 进关时右栏导读（可选，未配置时用 story） */
+  intro?: {
+    summary: string;
+    detail?: string;
+  };
   /** 展示用目标文案，与 check 中 objective id 顺序对应 */
   objectiveLabels: string[];
   startWorld: () => WorldState;
@@ -58,6 +66,12 @@ export interface LevelDef {
   allowMultiUser?: boolean;
   winExplanation: Explanation;
   check: (ctx: LevelCheckCtx) => LevelCheckResult;
+}
+
+export interface StageDef {
+  id: string;
+  title: string;
+  summary: string;
 }
 
 export interface LevelProgress {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Explanation, Highlights, UserId } from './engine/types';
+import type { Explanation, Highlights, UserId, WorldState } from './engine/types';
 import {
   activeRepo,
   applyWorldCommand,
@@ -11,7 +11,6 @@ import {
 } from './engine/world';
 import { getLevel, LEVELS } from './levels/catalog';
 import {
-  isLevelUnlocked,
   loadProgress,
   markCompleted,
   nextLevelId,
@@ -21,6 +20,7 @@ import {
 import type {
   AppMode,
   LevelCheckResult,
+  LevelDef,
   LevelLogEntry,
   LevelProgress,
   SkillProfile,
@@ -77,16 +77,28 @@ function bootTerm(profile: SkillProfile | null, levelId: number): Record<UserId,
   return { alice: levelWelcome(lv.title, lv.id), bob: welcomeFor('bob') };
 }
 
-function bootExplanation(profile: SkillProfile | null, levelId: number): Explanation | null {
-  if (profile !== 'beginner') return null;
-  const lv = getLevel(levelId) ?? LEVELS[0];
-  if (!lv) return null;
+function levelBootExplanation(lv: LevelDef): Explanation {
+  const title = lv.id === 0 ? `导读 · ${lv.title}` : `第 ${lv.id} 关 · ${lv.title}`;
+  if (lv.intro) {
+    return {
+      title,
+      summary: lv.intro.summary,
+      detail: lv.intro.detail,
+    };
+  }
   return {
-    title: lv.id === 0 ? `导读 · ${lv.title}` : `第 ${lv.id} 关 · ${lv.title}`,
+    title,
     summary: lv.story,
     detail: '完成左侧全部目标即可通关。命令执行后的讲解仍会显示在这里。',
     related: lv.suggestedCommands.slice(0, 3),
   };
+}
+
+function bootExplanation(profile: SkillProfile | null, levelId: number): Explanation | null {
+  if (profile !== 'beginner') return null;
+  const lv = getLevel(levelId) ?? LEVELS[0];
+  if (!lv) return null;
+  return levelBootExplanation(lv);
 }
 
 export default function App() {
@@ -95,6 +107,10 @@ export default function App() {
   const initialLevelId = progress.currentLevelId;
   const [mode, setMode] = useState<AppMode>(() => modeFromProfile(initialProfile));
   const [world, setWorld] = useState(() => bootWorld(initialProfile, initialLevelId));
+  /** 关卡初始世界：check 的 before 始终用它，避免后续命令把已完成目标冲掉 */
+  const [levelStartWorld, setLevelStartWorld] = useState<WorldState | null>(() =>
+    initialProfile === 'beginner' ? bootWorld(initialProfile, initialLevelId) : null,
+  );
   const [termByUser, setTermByUser] = useState<Record<UserId, TermLine[]>>(() =>
     bootTerm(initialProfile, initialLevelId),
   );
@@ -136,22 +152,18 @@ export default function App() {
   const enterLevel = useCallback((id: number) => {
     const lv = getLevel(id);
     if (!lv) return;
-    const snapshot = loadProgress();
-    if (!isLevelUnlocked(id, snapshot.completed) && id !== LEVELS[0]!.id) return;
+    // 所有关卡均可直接进入
     wonRef.current = false;
-    setWorld(lv.startWorld());
+    const start = lv.startWorld();
+    setWorld(start);
+    setLevelStartWorld(start);
     setMode('level');
     setLevelLog([]);
     setCheckResult(null);
     setReadConcepts([]);
     setActiveConcept(lv.concepts?.[0]?.id ?? null);
     setChapterModalOpen(false);
-    setExplanation({
-      title: lv.id === 0 ? `导读 · ${lv.title}` : `第 ${lv.id} 关 · ${lv.title}`,
-      summary: lv.story,
-      detail: '完成左侧全部目标即可通关。命令执行后的讲解仍会显示在这里。',
-      related: lv.suggestedCommands.slice(0, 3),
-    });
+    setExplanation(levelBootExplanation(lv));
     setHighlights(undefined);
     setInput('');
     setHistIdx(-1);
@@ -166,13 +178,14 @@ export default function App() {
       saveProgress(next);
       return next;
     });
-    inputRef.current?.focus();
+    inputRef.current?.focus({ preventScroll: true });
   }, []);
 
   const enterFree = useCallback(() => {
     setMode('free');
     // 切到自由练习时清空提交图，避免残留关卡演示状态
     setWorld(createEmptyWorld());
+    setLevelStartWorld(null);
     setTermByUser(emptyHist());
     setHistoryByUser(emptyHistories());
     setHighlights(undefined);
@@ -188,7 +201,7 @@ export default function App() {
       detail: '需要系统学习时，点顶栏「关卡学习」。',
       related: ['help', 'git status', 'git switch -c feature'],
     });
-    inputRef.current?.focus();
+    inputRef.current?.focus({ preventScroll: true });
   }, []);
 
   const onChooseProfile = useCallback(
@@ -201,6 +214,7 @@ export default function App() {
       } else {
         setMode('free');
         setWorld(createEmptyWorld());
+        setLevelStartWorld(null);
         setTermByUser(emptyHist());
         setHistoryByUser(emptyHistories());
         setExplanation({
@@ -246,7 +260,7 @@ export default function App() {
         const nextLog = [...levelLog, logEntry];
         setLevelLog(nextLog);
         const check = level.check({
-          before,
+          before: levelStartWorld ?? before,
           after: result.world,
           log: nextLog,
           readConcepts,
@@ -272,13 +286,13 @@ export default function App() {
         }
       }
     },
-    [world, appendTerm, inLevel, levelLog, level, readConcepts],
+    [world, appendTerm, inLevel, levelLog, level, readConcepts, levelStartWorld],
   );
 
   const applyCheck = useCallback(
     (log: LevelLogEntry[], concepts: string[], afterWorld: typeof world) => {
       const check = level.check({
-        before: afterWorld,
+        before: levelStartWorld ?? afterWorld,
         after: afterWorld,
         log,
         readConcepts: concepts,
@@ -303,7 +317,7 @@ export default function App() {
         ]);
       }
     },
-    [level, appendTerm],
+    [level, appendTerm, levelStartWorld],
   );
 
   const onReadConcept = useCallback(
@@ -378,6 +392,7 @@ export default function App() {
 
   const onResetEmpty = useCallback(() => {
     setWorld(createEmptyWorld());
+    setLevelStartWorld(null);
     setTermByUser(emptyHist());
     setHistoryByUser(emptyHistories());
     setExplanation(null);
@@ -390,6 +405,7 @@ export default function App() {
 
   const onLoadDemo = useCallback(() => {
     setWorld(createDemoWorld());
+    setLevelStartWorld(null);
     setTermByUser((prev) => ({
       alice: [
         ...prev.alice,
@@ -455,7 +471,6 @@ export default function App() {
       <div className="layout">
         {inLevel ? (
           <LevelPanel
-            key={level.id}
             level={level}
             progress={progress}
             checkResult={checkResult}
@@ -502,13 +517,9 @@ export default function App() {
         <ChapterLearnModal
           kicker={level.id === 0 ? '导读' : `第 ${level.id} 关`}
           title={level.title}
-          intro={level.story}
-          concepts={level.concepts ?? []}
+          intro={level.intro?.summary ?? level.story}
+          introDetail={level.intro?.detail}
           onClose={() => setChapterModalOpen(false)}
-          onOpenConcept={(id) => {
-            setChapterModalOpen(false);
-            setActiveConcept(id);
-          }}
         />
       )}
     </div>

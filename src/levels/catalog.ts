@@ -15,6 +15,14 @@ import {
   checkLevel6,
   checkLevel7,
   checkLevel8,
+  checkLevel9,
+  checkLevel10,
+  checkLevel11,
+  checkLevel12,
+  checkLevel13,
+  checkLevel14,
+  checkLevel15,
+  checkLevel16,
 } from './checks';
 import type { LevelDef } from './types';
 
@@ -57,11 +65,80 @@ function startL8(): WorldState {
   return createDemoWorld();
 }
 
+/** 两笔错误提交，便于 soft / hard 各退一步 */
+function startL9(): WorldState {
+  return mustRun(createDemoWorld(), [
+    'git commit -m "oops: 多写了一笔"',
+    'git commit -m "oops: 又多写了一笔"',
+  ]);
+}
+
+/** 一笔待撤销的提交 */
+function startL10(): WorldState {
+  return mustRun(createDemoWorld(), ['git commit -m "bad: 需要撤销这笔"']);
+}
+
+/** L12：Alice 已 commit 未 push；Bob 与远程同在旧 tip */
+function startL12(): WorldState {
+  return mustRun(createDemoWorld(), ['git commit -m "alice: 待发布"']);
+}
+
+/** L13：Alice 本地有未推提交；Bob 已推送另一笔，远程领先 */
+function startL13(): WorldState {
+  let w = mustRun(createDemoWorld(), ['git commit -m "alice: 本地未推"']);
+  w = applyWorldCommand(w, 'user bob').world;
+  w = mustRun(w, [
+    'git commit -m "bob: 已推远程"',
+    'git push origin main',
+  ]);
+  w = applyWorldCommand(w, 'user alice').world;
+  return w;
+}
+
+/** L14：远程已有 Alice 提交；Bob 在旧 tip，需先本地 commit 再 pull */
+function startL14(): WorldState {
+  let w = mustRun(createDemoWorld(), [
+    'git commit -m "alice: 已推到远程"',
+    'git push origin main',
+  ]);
+  w = applyWorldCommand(w, 'user bob').world;
+  return w;
+}
+
+/** L15：feature 已合入；hotfix 有未合并提交 */
+function startL15(): WorldState {
+  return mustRun(createDemoWorld(), [
+    'git switch -c feature',
+    'git commit -m "feat: 已完成"',
+    'git switch main',
+    'git merge feature',
+    'git switch -c hotfix',
+    'git commit -m "wip: 未合并的工作"',
+    'git switch main',
+  ]);
+}
+
+/** L16：Bob 本地有提交；远程已由 Alice 推进 */
+function startL16(): WorldState {
+  let w = mustRun(createDemoWorld(), ['git commit -m "alice: 远程新提交"']);
+  w = mustRun(w, ['git push origin main']);
+  w = applyWorldCommand(w, 'user bob').world;
+  w = mustRun(w, ['git commit -m "bob: 本地工作"']);
+  return w;
+}
+
 export const LEVELS: LevelDef[] = [
   {
     id: 0,
+    stageId: 's1',
     title: '认识 HEAD、提交与分支',
     story: '认识 Git 三件套：HEAD、提交、分支，以及它们之间的指向关系。',
+    intro: {
+      summary:
+        'Git 是分布式版本控制工具：用提交保存历史快照，用分支并行推进工作，用 HEAD 标明你当前在哪条线上。',
+      detail:
+        '本章在演示提交图上搞清三件事：HEAD 指向当前分支；分支指向该分支最新提交；只有 HEAD 所指分支会因 commit 前进。随后你将亲手切换分支、新建分支，并完成一次提交。',
+    },
     objectiveLabels: [
       '把 HEAD 指向 feature',
       '提交说明为「这是我的提交」的 commit',
@@ -143,6 +220,7 @@ export const LEVELS: LevelDef[] = [
   },
   {
     id: 1,
+    stageId: 's1',
     title: '第一次提交',
     story: '学习 git commit：在空仓库中创建第一次提交。',
     objectiveLabels: ['在 main 上产生至少 1 个提交'],
@@ -181,6 +259,7 @@ export const LEVELS: LevelDef[] = [
   },
   {
     id: 2,
+    stageId: 's1',
     title: '看懂仓库状态',
     story: '学习两条只读命令：git status 查看状态，git log 查看历史。',
     objectiveLabels: ['执行过 git status', '执行过 git log --oneline', '仓库仍有 main 提交'],
@@ -251,6 +330,7 @@ export const LEVELS: LevelDef[] = [
   },
   {
     id: 3,
+    stageId: 's2',
     title: '创建分支（先不切换 HEAD）',
     story: '学习 git branch：创建分支指针，且不切换 HEAD。',
     objectiveLabels: [
@@ -329,6 +409,7 @@ export const LEVELS: LevelDef[] = [
   },
   {
     id: 4,
+    stageId: 's2',
     title: '切换分支并提交',
     story: '学习切换分支后提交，观察历史如何分叉。',
     objectiveLabels: [
@@ -407,6 +488,7 @@ export const LEVELS: LevelDef[] = [
   },
   {
     id: 5,
+    stageId: 's2',
     title: 'Fast-forward 合并',
     story: '学习 Fast-forward 合并：无分叉时 merge 只前移指针。',
     objectiveLabels: [
@@ -481,6 +563,7 @@ export const LEVELS: LevelDef[] = [
   },
   {
     id: 6,
+    stageId: 's2',
     title: '生成合并提交',
     story: '学习生成 merge commit：分叉合并后出现双父节点。',
     objectiveLabels: [
@@ -555,12 +638,13 @@ export const LEVELS: LevelDef[] = [
   },
   {
     id: 7,
+    stageId: 's3',
     title: '用 reset 回退',
     story: '学习 git reset：把当前分支指针拨回更早的提交。',
     objectiveLabels: [
+      '已查看当前提交历史',
       'main 最新提交已回退到上一个提交',
       'HEAD 仍在 main 上',
-      '回退目标正确（HEAD~1 的父提交）',
     ],
     startWorld: startL7,
     concepts: [
@@ -621,7 +705,7 @@ export const LEVELS: LevelDef[] = [
     suggestedCommands: [
       'git log --oneline',
       'git reset --hard HEAD~1',
-      'git reset --soft HEAD~1',
+      'git status',
     ],
     winExplanation: {
       title: '通关：reset 会改历史指针',
@@ -633,12 +717,13 @@ export const LEVELS: LevelDef[] = [
   },
   {
     id: 8,
+    stageId: 's3',
     title: '协作：push 与 pull',
     story: '学习 push / pull：本地提交如何发布到远程并被他人同步。',
     objectiveLabels: [
-      '远程 origin/main 已更新',
-      'Bob 本地已有该提交',
-      'Bob 的 main 与远程一致',
+      'Alice 已创建一笔提交',
+      '远程 origin/main 已更新（已 push）',
+      'Bob 已 pull 并与远程一致',
     ],
     startWorld: startL8,
     allowMultiUser: true,
@@ -709,7 +794,403 @@ export const LEVELS: LevelDef[] = [
       detail: '生产环境禁止对共享分支 force push；非快进 push 会被拒绝。',
       related: ['git fetch', 'git remote -v', 'user alice'],
     },
-    check: ({ before, after }) => checkLevel8(before, after),
+    check: ({ before, after, log }) => checkLevel8(before, after, log),
+  },
+  {
+    id: 9,
+    stageId: 's4',
+    title: 'soft 与 hard 对比',
+    story: '学习 reset 的 soft 与 hard：同一回退动作，对工作区标记的处理不同。',
+    objectiveLabels: [
+      '已查看当前提交历史',
+      '已用 soft reset 回退一步',
+      '已用 hard reset 再回退一步',
+    ],
+    startWorld: startL9,
+    concepts: [
+      {
+        id: 'see-two-oops',
+        term: '1 · 先看历史',
+        teaser: 'main 上有两笔错误提交，先看清它们。',
+        body: '回退前用 log 记下最近两笔，避免拨错位置。',
+        tips: ['新提交在上', '两笔都叫 oops', 'log 只读'],
+        practice: { label: '查看提交历史', command: 'git log --oneline' },
+      },
+      {
+        id: 'soft-reset',
+        term: '2 · soft 回退',
+        teaser: '只把分支指针拨回一步，不清理工作区标记。',
+        body: 'soft reset 移动分支指针，本沙箱用 dirty 标记表示仍有未提交改动。',
+        tips: ['指针回退', '讲解会说明与 hard 的差别', '不要切换分支'],
+        practice: { label: 'soft 回退 HEAD~1', command: 'git reset --soft HEAD~1' },
+      },
+      {
+        id: 'hard-reset',
+        term: '3 · hard 再回退',
+        teaser: '再拨一步，并清理工作区标记。',
+        body: 'hard reset 在移动指针的同时清掉改动标记。分享过的提交一般改用 revert。',
+        tips: ['再回退一步', '最终 main 停在两笔 oops 之前', '对比 soft / hard'],
+        practice: { label: 'hard 再回退 HEAD~1', command: 'git reset --hard HEAD~1' },
+      },
+    ],
+    hints: [
+      '第一张卡 log。',
+      '第二张卡 soft reset 一步。',
+      '第三张卡 hard reset 再一步。',
+    ],
+    suggestedCommands: [
+      'git log --oneline',
+      'git reset --soft HEAD~1',
+      'git reset --hard HEAD~1',
+    ],
+    winExplanation: {
+      title: '通关：soft 与 hard',
+      summary: '两者都会移动分支指针；hard 还会清掉工作区标记。',
+      detail: '已分享的历史优先用 revert，避免改写公共分支。',
+      related: ['git revert HEAD', 'git log --oneline'],
+    },
+    check: ({ before, after, log }) => checkLevel9(before, after, log),
+  },
+  {
+    id: 10,
+    stageId: 's4',
+    title: 'revert 撤销提交',
+    story: '学习 revert：不改写历史，而是追加一笔抵消提交。',
+    objectiveLabels: [
+      '已查看当前提交历史',
+      '已 revert 当前提交（生成抵消提交）',
+      '原提交仍在历史中可追溯',
+    ],
+    startWorld: startL10,
+    concepts: [
+      {
+        id: 'see-bad',
+        term: '1 · 先看历史',
+        teaser: '看清要撤销的那一笔。',
+        body: 'revert 会新增提交来抵消内容，动手前确认目标。',
+        tips: ['注意最新提交说明', '不要用 reset 抹掉', 'log 只读'],
+        practice: { label: '查看提交历史', command: 'git log --oneline' },
+      },
+      {
+        id: 'do-revert',
+        term: '2 · 执行 revert',
+        teaser: '生成说明以 Revert 开头的新提交。',
+        body: 'revert 不删除原提交，而是在当前 tip 上追加一笔反向提交。',
+        tips: ['图上会多一个圆点', '原提交仍在', '与 reset 对比'],
+        practice: { label: '撤销当前提交', command: 'git revert HEAD' },
+      },
+      {
+        id: 'still-there',
+        term: '3 · 原提交仍可追溯',
+        teaser: '用 log 确认历史仍向前，原提交还在。',
+        body: '从 main 的新 tip 回溯，应仍能看到被撤销的那一笔。',
+        tips: ['历史未被抹掉', '这就是 revert 与 reset 的关键差别', '适合已推送的提交'],
+        practice: { label: '再查看一次历史', command: 'git log --oneline' },
+      },
+    ],
+    hints: ['第一张卡 log。', '第二张卡 revert HEAD。', '第三张卡再 log 确认。'],
+    suggestedCommands: ['git log --oneline', 'git revert HEAD', 'git log --oneline'],
+    winExplanation: {
+      title: '通关：revert 不改写历史',
+      summary: 'revert 追加抵消提交；reset 把分支指针拨回。',
+      detail: '公共分支上优先 revert，避免 force push。',
+      related: ['git reset --soft HEAD~1', 'git log --oneline'],
+    },
+    check: ({ before, after, log }) => checkLevel10(before, after, log),
+  },
+  {
+    id: 11,
+    stageId: 's4',
+    title: 'rebase 线性化',
+    story: '学习 rebase：把 feature 的独有提交接到 main 之上。',
+    objectiveLabels: [
+      'HEAD 在 feature 上',
+      '已把 feature rebase 到 main 之上',
+      '用 log 确认历史更线性（无双父）',
+    ],
+    startWorld: startL6,
+    concepts: [
+      {
+        id: 'on-feat',
+        term: '1 · 在 feature 上',
+        teaser: 'rebase 的是当前分支，先让 HEAD 指向 feature。',
+        body: '当前分支的独有提交会被重放到目标分支 tip 之上。',
+        tips: ['HEAD 应在 feature', 'main 先有独有提交', '观察分叉'],
+        practice: { label: 'HEAD 指向 feature', command: 'git switch feature' },
+      },
+      {
+        id: 'do-rebase',
+        term: '2 · rebase main',
+        teaser: '把 feature 接到 main 之上。',
+        body: 'rebase 后 feature 的提交变成 main tip 的后代，图更线性。',
+        tips: ['不是 merge 双父', '公共历史只保留一份', '共享分支慎用'],
+        practice: { label: '变基到 main', command: 'git rebase main' },
+      },
+      {
+        id: 'see-linear',
+        term: '3 · 观察线性历史',
+        teaser: '用 log 对照：没有双父节点。',
+        body: '与 merge 对比：rebase 重写的是当前分支的独有提交。',
+        tips: ['feature tip 单父', '能追溯到 main tip', '这就是线性化'],
+        practice: { label: '查看历史', command: 'git log --oneline' },
+      },
+    ],
+    hints: ['第一张卡切到 feature。', '第二张卡 rebase main。', '第三张卡 log。'],
+    suggestedCommands: ['git switch feature', 'git rebase main', 'git log --oneline'],
+    winExplanation: {
+      title: '通关：rebase',
+      summary: 'rebase 把当前分支独有提交重放到目标 tip 之上，历史更线性。',
+      detail: '不要对已推送且他人在用的分支 rebase。',
+      related: ['git merge main', 'git log --oneline'],
+    },
+    check: ({ before, after, log }) => checkLevel11(before, after, log),
+  },
+  {
+    id: 12,
+    stageId: 's5',
+    title: 'fetch 与 pull',
+    story: '区分 fetch 与 pull：fetch 只更新远程引用，pull 才合入本地。',
+    objectiveLabels: [
+      'Alice 已 commit 并 push 到 origin',
+      'Bob 已 fetch（本地 main 未自动变）',
+      'Bob 已 pull 并与远程一致',
+    ],
+    startWorld: startL12,
+    allowMultiUser: true,
+    concepts: [
+      {
+        id: 'alice-publish',
+        term: '1 · Alice 发布',
+        teaser: '起点里 Alice 已有一笔未推送提交；请先 push 到 origin。',
+        body: '本关起点：Alice 已 commit、尚未 push；Bob 与旧远程 tip 一致。',
+        tips: ['顶栏确认 Alice', 'push 后远程 main 前进', 'Bob 看不到自动更新'],
+        practice: { label: '确认已 push（若尚未则 push）', command: 'git push origin main' },
+      },
+      {
+        id: 'bob-fetch',
+        term: '2 · Bob fetch',
+        teaser: '只下载远程引用，不合并进本地 main。',
+        body: 'fetch 后 origin/main 会更新，Bob 本地 main 可以仍停在旧 tip。',
+        tips: ['切到 Bob', '先 fetch 再观察', '本地分支不会自动变'],
+        practice: { label: 'Bob 执行 fetch', command: 'git fetch' },
+      },
+      {
+        id: 'bob-pull-sync',
+        term: '3 · Bob pull',
+        teaser: '把远程更新合入本地 main。',
+        body: 'pull = 下载并合并。完成后 Bob 的 main 应与 origin 一致。',
+        tips: ['仍在 Bob', 'pull 会改本地 main', '对比 fetch'],
+        practice: { label: 'Bob 执行 pull', command: 'git pull' },
+      },
+    ],
+    hints: ['Alice：先 push。', 'Bob：fetch。', 'Bob：pull。'],
+    suggestedCommands: ['git push origin main', 'user bob', 'git fetch', 'git pull'],
+    winExplanation: {
+      title: '通关：fetch ≠ pull',
+      summary: 'fetch 更新远程跟踪引用；pull = fetch + 合并到当前分支。',
+      detail: '想先看远程再决定是否合并时，用 fetch。',
+      related: ['git fetch', 'git log --oneline', 'git remote -v'],
+    },
+    check: ({ before, after, log }) => checkLevel12(before, after, log),
+  },
+  {
+    id: 13,
+    stageId: 's5',
+    title: 'push 被拒绝',
+    story: '远程已领先时 push 会失败；先 pull 再 push。',
+    objectiveLabels: [
+      '以 Alice 尝试 push（预期被拒绝）',
+      '已 pull 同步远程',
+      '再次 push 成功，远程与 Alice 一致',
+    ],
+    startWorld: startL13,
+    allowMultiUser: true,
+    concepts: [
+      {
+        id: 'try-push',
+        term: '1 · 尝试 push',
+        teaser: 'Alice 本地与远程已分叉，直接 push 会被拒。',
+        body: '非快进 push 会覆盖他人提交，因此被拒绝。这是协作保护。',
+        tips: ['顶栏 Alice', '观察终端报错', '不要 force push'],
+        practice: { label: 'Alice 执行 push', command: 'git push origin main' },
+      },
+      {
+        id: 'do-pull',
+        term: '2 · pull 同步',
+        teaser: '先把远程领先提交合下来。',
+        body: 'pull 后本地包含双方历史，才能安全 push。',
+        tips: ['仍在 Alice', '可能产生 merge 或 FF', '再看 log'],
+        practice: { label: 'Alice 执行 pull', command: 'git pull' },
+      },
+      {
+        id: 'push-again',
+        term: '3 · 再次 push',
+        teaser: '同步后 push 应成功。',
+        body: '远程与 Alice 一致后，协作闭环完成。',
+        tips: ['再次 push', '远程 main 与 Alice 相同', '禁止 force'],
+        practice: { label: '再次 push', command: 'git push origin main' },
+      },
+    ],
+    hints: ['Alice push 应失败。', 'Alice pull。', '再 push。'],
+    suggestedCommands: ['git push origin main', 'git pull', 'git push origin main'],
+    winExplanation: {
+      title: '通关：push 保护',
+      summary: '远程领先时非快进 push 会被拒；先 pull 再 push。',
+      detail: '生产环境永远不要对共享分支 force push。',
+      related: ['git pull', 'git log --oneline'],
+    },
+    check: ({ before, after, log }) => checkLevel13(before, after, log),
+  },
+  {
+    id: 14,
+    stageId: 's5',
+    title: 'pull 产生合并',
+    story: '双方各自提交后 pull，可能生成双父 merge 提交。',
+    objectiveLabels: [
+      'Bob 本地已有自己的提交',
+      'pull 后 main 是双父 merge 提交',
+      '该提交能追溯到 Alice 已推送的提交',
+    ],
+    startWorld: startL14,
+    allowMultiUser: true,
+    concepts: [
+      {
+        id: 'bob-commit',
+        term: '1 · Bob 本地提交',
+        teaser: 'Bob 在旧 tip 上先记一笔，与远程分叉。',
+        body: '远程已有 Alice 的提交；Bob 本地再 commit 就会分叉，为 pull 合并做准备。',
+        tips: ['顶栏 Bob', '先 commit', '此时不要直接 push'],
+        practice: { label: 'Bob 创建本地提交（若尚未）', command: 'git commit -m "bob: 仅在本地"' },
+      },
+      {
+        id: 'bob-pull-merge',
+        term: '2 · pull 合并',
+        teaser: 'pull 会把远程合进本地，可能生成双父节点。',
+        body: '与 FF 不同：双方都有独有提交时，会出现 merge commit。',
+        tips: ['执行 pull', '观察新圆点两条父边', '这就是协作合并'],
+        practice: { label: 'Bob 执行 pull', command: 'git pull' },
+      },
+      {
+        id: 'see-both',
+        term: '3 · 含双方历史',
+        teaser: '从 Bob 的 main 能追溯到远程提交。',
+        body: 'merge commit 同时记录两边历史。',
+        tips: ['用 log 对照', '远程 tip 可追溯', '之后可 push 分享合并结果'],
+        practice: { label: '查看历史', command: 'git log --oneline' },
+      },
+    ],
+    hints: ['Bob 先 commit。', '再 pull。', 'log 观察双父。'],
+    suggestedCommands: ['git commit -m "bob: 仅在本地"', 'git pull', 'git log --oneline'],
+    winExplanation: {
+      title: '通关：pull 合并',
+      summary: '本地与远程都前进时，pull 会做合并，可能出现 merge commit。',
+      detail: '也可以选择 rebase 本地提交到 origin 之上（进阶）。',
+      related: ['git rebase origin/main', 'git push origin main'],
+    },
+    check: ({ before, after, log }) => checkLevel14(before, after, log),
+  },
+  {
+    id: 15,
+    stageId: 's5',
+    title: '删除分支',
+    story: '学习 -d 与 -D：已合并可安全删，未合并需强制删。',
+    objectiveLabels: [
+      '已删除已合并的 feature（-d）',
+      '未合并分支 -d 被拒绝',
+      '用 -D 强制删除 hotfix',
+    ],
+    startWorld: startL15,
+    concepts: [
+      {
+        id: 'del-merged',
+        term: '1 · 删除已合并分支',
+        teaser: 'feature 已进 main，可用 -d 安全删除。',
+        body: 'git branch -d 只删已合并分支，避免误删未并入的工作。',
+        tips: ['feature 与 main 同 tip 或已合并', '执行 -d', '标签从图上消失'],
+        practice: { label: '删除 feature', command: 'git branch -d feature' },
+      },
+      {
+        id: 'del-unmerged-fail',
+        term: '2 · -d 拒绝未合并',
+        teaser: 'hotfix 上有未合并提交，直接 -d 会被拒绝。',
+        body: '未合并 tip 上的 -d 会失败，保护独有提交。',
+        tips: ['图上 hotfix 领先 main', '尝试 -d', '阅读拒绝原因'],
+        practice: { label: '尝试删除未合并的 hotfix', command: 'git branch -d hotfix' },
+      },
+      {
+        id: 'force-del',
+        term: '3 · -D 强制删除',
+        teaser: '确认不要后可用 -D 强制删。',
+        body: '-D 不检查是否合并。确认提交已无用再执行。',
+        tips: ['顶栏确认不要 hotfix 工作', '再 -D', '图上 hotfix 消失'],
+        practice: { label: '强制删除 hotfix', command: 'git branch -D hotfix' },
+      },
+    ],
+    hints: [
+      '第一张卡 -d 删 feature。',
+      '第二张卡 -d hotfix（应失败，因有未合并提交）。',
+      '第三张卡 -D hotfix。',
+    ],
+    suggestedCommands: [
+      'git branch -d feature',
+      'git branch -d hotfix',
+      'git branch -D hotfix',
+    ],
+    winExplanation: {
+      title: '通关：删分支',
+      summary: '-d 保护未合并工作；-D 强制删除。',
+      detail: '删分支只删名字，提交对象可能仍在直到无引用。',
+      related: ['git log --oneline', 'git branch'],
+    },
+    check: ({ before, after, log }) => checkLevel15(before, after, log),
+  },
+  {
+    id: 16,
+    stageId: 's5',
+    title: 'rebase 到 origin',
+    story: '协作中把本地提交 rebase 到 origin/main，保持线性。',
+    objectiveLabels: [
+      '已 fetch 远程更新',
+      '已 rebase 到 origin/main',
+      'log 显示本地提交接在远程之上且线性',
+    ],
+    startWorld: startL16,
+    allowMultiUser: true,
+    concepts: [
+      {
+        id: 'fetch-origin',
+        term: '1 · fetch 远程',
+        teaser: '先更新 origin/main 跟踪引用。',
+        body: 'Bob 本地有提交，远程也有新提交。先 fetch 再 rebase。',
+        tips: ['顶栏 Bob', '执行 fetch', 'origin/main 前进'],
+        practice: { label: 'Bob 执行 fetch', command: 'git fetch' },
+      },
+      {
+        id: 'rebase-origin',
+        term: '2 · rebase origin/main',
+        teaser: '把本地独有提交接到远程 tip 之上。',
+        body: '协作中可用 rebase 保持线性，而不是 merge 出双父。',
+        tips: ['不要 rebase 已共享的合并结果', '目标写 origin/main', '图上应接在远程之上'],
+        practice: { label: '变基到远程', command: 'git rebase origin/main' },
+      },
+      {
+        id: 'see-on-top',
+        term: '3 · 观察线性结果',
+        teaser: 'log：本地提交在远程之上且无双父。',
+        body: '完成后可再 push，把线性历史发布出去。',
+        tips: ['log 对照', '单父', '可 push 分享'],
+        practice: { label: '查看历史', command: 'git log --oneline' },
+      },
+    ],
+    hints: ['Bob：fetch。', 'Bob：rebase origin/main。', 'log 确认。'],
+    suggestedCommands: ['git fetch', 'git rebase origin/main', 'git log --oneline'],
+    winExplanation: {
+      title: '通关：rebase origin',
+      summary: '先 fetch 再 rebase origin/分支，可把本地工作接在最新远程历史之上。',
+      detail: '强推（force push）在协作分支上仍应避免。',
+      related: ['git push origin main', 'git log --oneline'],
+    },
+    check: ({ before, after, log }) => checkLevel16(before, after, log),
   },
 ];
 

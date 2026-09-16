@@ -38,15 +38,12 @@ export function saveProgress(progress: LevelProgress): void {
 }
 
 export function isLevelUnlocked(
-  levelId: number,
-  completed: number[],
-  all: { id: number }[] = LEVELS,
+  _levelId: number,
+  _completed: number[],
+  _all: { id: number }[] = LEVELS,
 ): boolean {
-  if (levelId === all[0]?.id) return true;
-  const idx = all.findIndex((l) => l.id === levelId);
-  if (idx <= 0) return true;
-  const prev = all[idx - 1]!;
-  return completed.includes(prev.id) || completed.includes(levelId);
+  // 所有关卡均可直接进入学习，不要求先通关上一关
+  return true;
 }
 
 export function nextLevelId(

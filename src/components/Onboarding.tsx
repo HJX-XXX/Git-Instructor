@@ -23,19 +23,23 @@ export function Onboarding({ onChoose }: Props) {
             className="choice-card choice-beginner"
             onClick={() => onChoose('beginner')}
           >
-            <span className="choice-badge">推荐</span>
-            <span className="choice-title">我是新手</span>
-            <span className="choice-desc">
-              从概念导读开始，按关卡学 commit、分支与 HEAD。完成后进入自由沙箱。
+            <span className="choice-head">
+              <span className="choice-title">我是新手</span>
+              <span className="choice-badge">推荐</span>
             </span>
-            <span className="choice-meta">导读 + 8 关 · 约 25 分钟</span>
+            <span className="choice-desc">
+              系统学习 Git 命令行：按关卡搞清 HEAD、提交、分支、合并、回退与协作，每一步都在提交图上看到真实变化。
+            </span>
+            <span className="choice-meta">导读 + 16 关 · 分 5 个阶段</span>
           </button>
           <button
             type="button"
             className="choice-card choice-advanced"
             onClick={() => onChoose('advanced')}
           >
-            <span className="choice-title">我已经会一些</span>
+            <span className="choice-head">
+              <span className="choice-title">我已经会一些</span>
+            </span>
             <span className="choice-desc">
               直接进入自由沙箱：可加载双人演示，练习 merge / reset / push / pull。
             </span>

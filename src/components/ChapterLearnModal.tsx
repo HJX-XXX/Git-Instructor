@@ -1,24 +1,15 @@
 import { useEffect } from 'react';
-import type { LevelConcept } from '../levels/types';
 
 interface Props {
   title: string;
   kicker: string;
   intro: string;
-  concepts: LevelConcept[];
+  introDetail?: string;
   onClose: () => void;
-  onOpenConcept: (id: string) => void;
 }
 
-/** 导读卡片点开后：屏幕中央展示本章完整学习内容 */
-export function ChapterLearnModal({
-  title,
-  kicker,
-  intro,
-  concepts,
-  onClose,
-  onOpenConcept,
-}: Props) {
+/** 本章导读：只介绍学习目的，不展开概念卡全文 */
+export function ChapterLearnModal({ title, kicker, intro, introDetail, onClose }: Props) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -52,32 +43,7 @@ export function ChapterLearnModal({
         </header>
         <div className="concept-modal-body">
           <p className="concept-modal-lead">{intro}</p>
-          {concepts.map((c) => (
-            <section key={c.id} className="chapter-section">
-              <h3 className="chapter-term">{c.term}</h3>
-              <p className="chapter-teaser">{c.teaser}</p>
-              <p className="concept-modal-text">{c.body}</p>
-              {c.tips && c.tips.length > 0 && (
-                <ul className="concept-modal-tips">
-                  {c.tips.map((t) => (
-                    <li key={t}>{t}</li>
-                  ))}
-                </ul>
-              )}
-              {c.practice && (
-                <p className="chapter-practice">
-                  实操目标：{c.practice.label}（命令可在卡内「显示命令」后查看）
-                </p>
-              )}
-              <button
-                type="button"
-                className="btn-mini chapter-goto"
-                onClick={() => onOpenConcept(c.id)}
-              >
-                在提交图上高亮
-              </button>
-            </section>
-          ))}
+          {introDetail && <p className="concept-modal-text">{introDetail}</p>}
         </div>
         <footer className="concept-modal-foot">
           <button type="button" className="btn btn-primary" onClick={onClose}>

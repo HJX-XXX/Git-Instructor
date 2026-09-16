@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { LEVELS } from '../levels/catalog';
-import { isLevelUnlocked } from '../levels/progress';
+import { STAGES } from '../levels/stages';
 import type { LevelCheckResult, LevelDef, LevelProgress } from '../levels/types';
 
 interface Props {
@@ -35,8 +35,10 @@ export function LevelPanel({
   onOpenStory,
 }: Props) {
   const [openHints, setOpenHints] = useState<number[]>([]);
-  const [openConceptId, setOpenConceptId] = useState<string | null>(null);
+  const [openConceptIds, setOpenConceptIds] = useState<string[]>([]);
   const [revealedPractices, setRevealedPractices] = useState<string[]>([]);
+  /** 默认展开当前关所在阶段，其余保持上次状态 */
+  const [collapsedStages, setCollapsedStages] = useState<string[]>([]);
   const won = checkResult?.win ?? false;
   const hasNext = LEVELS.some((l) => l.id === level.id + 1);
   const storyRef = useRef<HTMLButtonElement | null>(null);
@@ -77,7 +79,10 @@ export function LevelPanel({
         >
           <div className="level-kicker">{level.id === 0 ? '导读' : `第 ${level.id} 关`}</div>
           <h3 className="level-title">{level.title}</h3>
-          <p className="level-story">{level.story}</p>
+          <p className="level-story">{level.intro?.summary ?? level.story}</p>
+          {level.intro?.detail && (
+            <p className="level-story-detail">{level.intro.detail}</p>
+          )}
           <span className="level-open-hint">查看本关学习内容</span>
         </button>
 
@@ -131,10 +136,12 @@ export function LevelPanel({
                 const objDone = checkResult?.objectives[ci]?.done ?? false;
                 const read = readConcepts.includes(c.id) || objDone;
                 const active = activeConcept === c.id;
-                const open = openConceptId === c.id;
-                const toggleConcept = () => {
-                  const next = open ? null : c.id;
-                  setOpenConceptId(next);
+                const open = openConceptIds.includes(c.id);
+                const setOpen = (next: boolean) => {
+                  setOpenConceptIds((prev) => {
+                    if (next) return prev.includes(c.id) ? prev : [...prev, c.id];
+                    return prev.filter((id) => id !== c.id);
+                  });
                   if (next) onFocusConcept(c.id);
                 };
                 return (
@@ -142,8 +149,13 @@ export function LevelPanel({
                     key={c.id}
                     data-concept={c.id}
                     className={`concept-card${read ? ' is-read' : ''}${active ? ' is-active' : ''}${open ? ' is-open' : ''}`}
-                    onClick={() => {
-                      if (open) setOpenConceptId(null);
+                    onClick={(e) => {
+                      const t = e.target as HTMLElement;
+                      // 命令/标记等按钮自身处理，不在此切换
+                      if (t.closest('button.chip, button.concept-practice-reveal, button.btn-mini')) {
+                        return;
+                      }
+                      setOpen(!open);
                     }}
                   >
                     <button
@@ -152,7 +164,7 @@ export function LevelPanel({
                       aria-expanded={open}
                       onClick={(e) => {
                         e.stopPropagation();
-                        toggleConcept();
+                        setOpen(!open);
                       }}
                     >
                       <span className="concept-chev" aria-hidden>
@@ -268,31 +280,61 @@ export function LevelPanel({
 
         <section className="level-block">
           <h4>全部关卡</h4>
-          <ol className="level-list">
-            {LEVELS.map((l) => {
-              const unlocked = isLevelUnlocked(l.id, progress.completed);
-              const done = progress.completed.includes(l.id);
-              const active = l.id === level.id;
-              return (
-                <li key={l.id}>
-                  <button
-                    type="button"
-                    className={`level-item${active ? ' is-active' : ''}${done ? ' is-done' : ''}${
-                      unlocked ? '' : ' is-locked'
-                    }`}
-                    disabled={!unlocked}
-                    onClick={() => onSelectLevel(l.id)}
-                  >
-                    <span className="level-item-id">L{l.id}</span>
-                    <span className="level-item-title">{l.title}</span>
-                    <span className="level-item-state">
-                      {done ? '✓' : unlocked ? (active ? '进行中' : '可进入') : '锁定'}
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-          </ol>
+          {STAGES.map((stage) => {
+            const items = LEVELS.filter((l) => l.stageId === stage.id);
+            if (items.length === 0) return null;
+            const collapsed = collapsedStages.includes(stage.id);
+            return (
+              <div key={stage.id} className={`level-stage${collapsed ? ' is-collapsed' : ''}`}>
+                <button
+                  type="button"
+                  className="level-stage-head"
+                  aria-expanded={!collapsed}
+                  onClick={() => {
+                    setCollapsedStages((prev) =>
+                      prev.includes(stage.id)
+                        ? prev.filter((id) => id !== stage.id)
+                        : [...prev, stage.id],
+                    );
+                  }}
+                >
+                  <span className="level-stage-chev" aria-hidden>
+                    {collapsed ? '▸' : '▾'}
+                  </span>
+                  <span className="level-stage-text">
+                    <span className="level-stage-title">{stage.title}</span>
+                    <span className="level-stage-sum">{stage.summary}</span>
+                  </span>
+                </button>
+                {!collapsed && (
+                  <ol className="level-list">
+                    {items.map((l) => {
+                      const done = progress.completed.includes(l.id);
+                      const active = l.id === level.id;
+                      return (
+                        <li key={l.id}>
+                          <button
+                            type="button"
+                            className={`level-item${active ? ' is-active' : ''}${done ? ' is-done' : ''}`}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              onSelectLevel(l.id);
+                            }}
+                          >
+                            <span className="level-item-id">L{l.id}</span>
+                            <span className="level-item-title">{l.title}</span>
+                            <span className="level-item-state">
+                              {done ? '✓' : active ? '进行中' : '可进入'}
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                )}
+              </div>
+            );
+          })}
           <button type="button" className="btn" onClick={onResetLevel}>
             重置本关
           </button>
