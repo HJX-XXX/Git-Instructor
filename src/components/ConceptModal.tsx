@@ -45,11 +45,14 @@ export function ConceptModal({ concept, read, onClose, onMarkRead, onHighlight }
           <p className="concept-modal-lead">{concept.teaser}</p>
           <p className="concept-modal-text">{concept.body}</p>
           {concept.tips && concept.tips.length > 0 && (
-            <ul className="concept-modal-tips">
-              {concept.tips.map((t) => (
-                <li key={t}>{t}</li>
-              ))}
-            </ul>
+            <div className="concept-tips-block">
+              <p className="concept-tips-label">要点</p>
+              <ul className="concept-modal-tips">
+                {concept.tips.map((t) => (
+                  <li key={t}>{t}</li>
+                ))}
+              </ul>
+            </div>
           )}
         </div>
         <footer className="concept-modal-foot">

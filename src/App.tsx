@@ -19,6 +19,7 @@ import {
 } from './levels/progress';
 import type {
   AppMode,
+  GraphFlashFocus,
   LevelCheckResult,
   LevelDef,
   LevelLogEntry,
@@ -101,6 +102,61 @@ function bootExplanation(profile: SkillProfile | null, levelId: number): Explana
   return levelBootExplanation(lv);
 }
 
+/** 提交图结构签名：判断命令是否改变了图 */
+function graphSignature(w: WorldState): string {
+  return JSON.stringify({
+    ac: Object.keys(w.users.alice.commits).sort(),
+    ab: w.users.alice.branches,
+    ah: w.users.alice.head,
+    bc: Object.keys(w.users.bob.commits).sort(),
+    bb: w.users.bob.branches,
+    bh: w.users.bob.head,
+    remote: w.remoteBranches,
+  });
+}
+
+/** 卡片目标完成后图上闪烁目标（可与 L0 同款样式） */
+function resolveGraphFocus(level: LevelDef, index: number): GraphFlashFocus | null {
+  const c = level.concepts?.[index];
+  if (!c) return null;
+  if (c.graphFocus) return c.graphFocus;
+  const cmds = c.practice?.commands ?? [c.practice?.command ?? ''];
+  const cmd = cmds.filter(Boolean).map((s) => s.toLowerCase()).join(' ');
+  if (!cmd) return null;
+  if (cmd.includes('status') || cmd.includes('log') || cmd === 'help') {
+    // 纯观察命令：若同时含 switch/merge 等仍按动作闪
+    if (!/switch|checkout|commit|branch|merge|reset|revert|rebase|push|pull|fetch/.test(cmd)) {
+      return null;
+    }
+  }
+  if (cmd.includes('checkout') || cmd.includes('switch')) {
+    return cmd.includes('-b') || cmd.includes('-c') || cmd.includes(' main') || cmd.includes('checkout main')
+      ? cmd.includes('-b') || cmd.includes('-c')
+        ? 'branch'
+        : 'head'
+      : 'head';
+  }
+  if (cmd.includes('commit')) return 'commit';
+  if (cmd.includes('branch') && !cmd.includes('-d') && !cmd.includes('-D')) {
+    return 'branch';
+  }
+  // 协作命令：优先高亮远程 origin/* 区域
+  if (cmd.includes('push') || cmd.includes('pull') || cmd.includes('fetch')) {
+    return 'remote';
+  }
+  if (
+    cmd.includes('merge') ||
+    cmd.includes('reset') ||
+    cmd.includes('revert') ||
+    cmd.includes('rebase') ||
+    cmd.includes('-d') ||
+    cmd.includes('-D')
+  ) {
+    return 'tip';
+  }
+  return null;
+}
+
 export default function App() {
   const [progress, setProgress] = useState<LevelProgress>(() => loadProgress());
   const initialProfile = progress.profile;
@@ -126,6 +182,8 @@ export default function App() {
   const [readConcepts, setReadConcepts] = useState<string[]>([]);
   const [activeConcept, setActiveConcept] = useState<string | null>(null);
   const [chapterModalOpen, setChapterModalOpen] = useState(false);
+  const [cardFlash, setCardFlash] = useState<GraphFlashFocus | null>(null);
+  const prevObjectivesDone = useRef<boolean[]>([]);
   const wonRef = useRef(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const bodyRef = useRef<HTMLDivElement | null>(null);
@@ -163,6 +221,8 @@ export default function App() {
     setReadConcepts([]);
     setActiveConcept(lv.concepts?.[0]?.id ?? null);
     setChapterModalOpen(false);
+    setCardFlash(null);
+    prevObjectivesDone.current = [];
     setExplanation(levelBootExplanation(lv));
     setHighlights(undefined);
     setInput('');
@@ -193,6 +253,8 @@ export default function App() {
     setLevelLog([]);
     setReadConcepts([]);
     setActiveConcept(null);
+    setCardFlash(null);
+    prevObjectivesDone.current = [];
     setInput('');
     setHistIdx(-1);
     setExplanation({
@@ -256,7 +318,7 @@ export default function App() {
       setInput('');
 
       if (inLevel && (fromUser === 'alice' || level.allowMultiUser)) {
-        const logEntry: LevelLogEntry = { input: cmd, ok: result.ok };
+        const logEntry: LevelLogEntry = { input: cmd, ok: result.ok, user: fromUser };
         const nextLog = [...levelLog, logEntry];
         setLevelLog(nextLog);
         const check = level.check({
@@ -266,6 +328,24 @@ export default function App() {
           readConcepts,
         });
         setCheckResult(check);
+        // 非 L0：卡片目标达成且提交图有变化时，保持 L0 同款持续演示（闪烁 + 橙色条）
+        if (level.id !== 0) {
+          const graphChanged = graphSignature(before) !== graphSignature(result.world);
+          const prevDone = prevObjectivesDone.current;
+          const newlyDoneIdx = check.objectives.findIndex(
+            (o, i) => o.done && !prevDone[i],
+          );
+          prevObjectivesDone.current = check.objectives.map((o) => o.done);
+          if (graphChanged && newlyDoneIdx >= 0) {
+            const focus = resolveGraphFocus(level, newlyDoneIdx);
+            if (focus) {
+              // 不自动停止，保持一直闪烁与提示条
+              setCardFlash(focus);
+            }
+          }
+        } else {
+          prevObjectivesDone.current = check.objectives.map((o) => o.done);
+        }
         if (check.win && !wonRef.current) {
           wonRef.current = true;
           setProgress((prev) => {
@@ -332,9 +412,10 @@ export default function App() {
   );
 
   const onFocusConcept = useCallback((id: string) => {
-    // 只高亮提交图，不弹窗（概念在侧栏直接展开）
+    // L0：点概念卡演示；非 L0 也可点卡查看，但通关闪烁以 cardFlash 为准
     setActiveConcept(id);
-  }, []);
+    if (level.id !== 0) setCardFlash(null);
+  }, [level.id]);
 
   const onSubmit = useCallback(() => {
     run(input);
@@ -381,6 +462,13 @@ export default function App() {
       const result = switchUser(world, id);
       setWorld(result.world);
       appendTerm(id, [{ text: `当前用户：${USER_META[id].label}`, kind: 'out' }]);
+      // 关卡判题依赖用户身份：顶栏切换也要写入日志
+      if (inLevel) {
+        setLevelLog((prev) => [
+          ...prev,
+          { input: `user ${id}`, ok: true, user: id },
+        ]);
+      }
       setExplanation(result.explanation);
       setHighlights(undefined);
       setHistIdx(-1);
@@ -471,6 +559,7 @@ export default function App() {
       <div className="layout">
         {inLevel ? (
           <LevelPanel
+            key={level.id}
             level={level}
             progress={progress}
             checkResult={checkResult}
@@ -496,9 +585,9 @@ export default function App() {
             highlights={highlights}
             onFill={onFill}
             demoFocus={
-              inLevel && level.id === 0 && activeConcept
-                ? ((activeConcept as 'head' | 'branch' | 'commit') ?? null)
-                : null
+              inLevel && level.id === 0
+                ? ((activeConcept as 'head' | 'branch' | 'commit' | 'tip' | 'remote') || null)
+                : cardFlash
             }
           />
           <TerminalPanel

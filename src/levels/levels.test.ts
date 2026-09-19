@@ -27,7 +27,8 @@ function run(world: W, cmds: string[]) {
   const log: LevelLogEntry[] = [];
   for (const c of cmds) {
     const r = applyWorldCommand(w, c);
-    log.push({ input: c, ok: r.ok });
+    // user 记录命令执行后的身份（user xxx 切换后为新用户；顶栏切换在 App 中写入 user 字段）
+    log.push({ input: c, ok: r.ok, user: r.world.activeUser });
     if (!r.ok) throw new Error(`${c}: ${r.stdout.join(' | ')}`);
     w = r.world;
   }
@@ -128,7 +129,19 @@ describe('level checks', () => {
     expect(r.win).toBe(true);
   });
 
-  it('L4 wins after switch -c feature, commit, and log', () => {
+  it('L4 wins after switch feature, commit, then observe main via log', () => {
+    const before = createDemoWorld();
+    const { w, log } = run(before, [
+      'git switch -c feature',
+      'git commit -m "feat: x"',
+      'git switch main',
+      'git log --oneline',
+    ]);
+    const r = checkLevel4(before, w, log);
+    expect(r.win).toBe(true);
+  });
+
+  it('L4 does not win if log runs on feature without switching to main', () => {
     const before = createDemoWorld();
     const { w, log } = run(before, [
       'git switch -c feature',
@@ -136,8 +149,8 @@ describe('level checks', () => {
       'git log --oneline',
     ]);
     const r = checkLevel4(before, w, log);
-    expect(r.win).toBe(true);
-    expect(activeRepo(w).head).toEqual({ kind: 'branch', name: 'feature' });
+    expect(r.win).toBe(false);
+    expect(r.objectives[2]!.done).toBe(false);
   });
 
   it('L4 fails if only branch without commit', () => {
@@ -232,24 +245,32 @@ describe('level checks', () => {
     expect(c2.objectives[1]?.done).toBe(true);
     expect(c2.objectives[2]?.done).toBe(false);
 
-    let w = applyWorldCommand(afterPush.w, 'user bob').world;
-    const afterPull = run(w, ['git pull']);
-    const c3 = checkLevel8(
-      before,
-      afterPull.w,
-      [...afterCommit.log, ...afterPush.log, ...afterPull.log],
-    );
+    const afterPull = run(afterPush.w, ['user bob', 'git pull']);
+    const c3 = checkLevel8(before, afterPull.w, [...afterCommit.log, ...afterPush.log, ...afterPull.log]);
     expect(c3.win).toBe(true);
   });
 
   it('L8 wins after alice push and bob pull', () => {
-    let w = createDemoWorld();
-    const before = w;
-    const r1 = run(w, ['git commit -m "alice: shared"', 'git push origin main']);
-    w = r1.w;
-    w = applyWorldCommand(w, 'user bob').world;
-    const r2 = run(w, ['git pull']);
-    expect(checkLevel8(before, r2.w, [...r1.log, ...r2.log]).win).toBe(true);
+    const before = createDemoWorld();
+    const all = run(before, [
+      'git commit -m "alice: shared"',
+      'git push origin main',
+      'user bob',
+      'git pull',
+    ]);
+    expect(checkLevel8(before, all.w, all.log).win).toBe(true);
+  });
+
+  it('L8 does not win if pull runs as Alice only', () => {
+    const before = createDemoWorld();
+    const all = run(before, [
+      'git commit -m "alice: shared"',
+      'git push origin main',
+      'git pull',
+    ]);
+    const r = checkLevel8(before, all.w, all.log);
+    expect(r.win).toBe(false);
+    expect(r.objectives[2]!.done).toBe(false);
   });
 
   it('catalog start worlds and checks work end-to-end', () => {
@@ -281,14 +302,12 @@ describe('level checks', () => {
 
     const l8 = getLevel(8)!;
     const b8 = l8.startWorld();
-    const step1 = run(b8, ['git commit -m "x"', 'git push origin main']);
-    const afterSwitch = applyWorldCommand(step1.w, 'user bob').world;
-    const step2 = run(afterSwitch, ['git pull']);
+    const a8 = run(b8, ['git commit -m "x"', 'git push origin main', 'user bob', 'git pull']);
     expect(
       l8.check({
         before: b8,
-        after: step2.w,
-        log: [...step1.log, ...step2.log],
+        after: a8.w,
+        log: a8.log,
       }).win,
     ).toBe(true);
   });
@@ -299,9 +318,22 @@ describe('level checks', () => {
     const a9 = run(b9, [
       'git log --oneline',
       'git reset --soft HEAD~1',
+      'git status',
       'git reset --hard HEAD~1',
+      'git status',
     ]);
     expect(l9.check({ before: b9, after: a9.w, log: a9.log }).win).toBe(true);
+
+    // soft 后未 status 就 hard：不应把「soft 后 status」算成通过
+    const a9b = run(b9, [
+      'git log --oneline',
+      'git reset --soft HEAD~1',
+      'git reset --hard HEAD~1',
+      'git status',
+    ]);
+    const r9b = l9.check({ before: b9, after: a9b.w, log: a9b.log });
+    expect(r9b.win).toBe(false);
+    expect(r9b.objectives[2]!.done).toBe(false);
 
     const l10 = getLevel(10)!;
     const b10 = l10.startWorld();
@@ -322,6 +354,16 @@ describe('level checks', () => {
       'git pull',
     ]);
     expect(l12.check({ before: b12, after: a12.w, log: a12.log }).win).toBe(true);
+
+    // Alice 身份下 fetch/pull 不能算 Bob 已完成同步
+    const a12wrong = run(b12, [
+      'git push origin main',
+      'git fetch',
+      'git pull',
+    ]);
+    const r12wrong = l12.check({ before: b12, after: a12wrong.w, log: a12wrong.log });
+    expect(r12wrong.win).toBe(false);
+    expect(r12wrong.objectives[1]!.done).toBe(false);
 
     const l13 = getLevel(13)!;
     const b13 = l13.startWorld();

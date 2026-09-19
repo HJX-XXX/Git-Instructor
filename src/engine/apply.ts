@@ -411,20 +411,26 @@ function runReset(
     // 撤销提交后，教学上标记为仍有改动待提交
     state.dirty = true;
   }
-  const modeNote =
+  const softHard =
     mode === 'hard'
-      ? '工作区已强制对齐目标提交（教学模拟）。'
+      ? 'hard：分支指针已拨回，工作区也强制对齐目标（未提交改动标记已清）。'
       : mode === 'soft'
-        ? '保留「已暂存」改动标记，便于继续 commit。'
-        : '改动回到工作区未暂存（默认 mixed）。';
+        ? 'soft：只把分支指针拨回；暂存区/未提交改动仍保留（status 会显示仍有改动），可继续 commit。'
+        : 'mixed（默认）：分支指针已拨回；改动回到工作区、变为未提交（介于 soft 与 hard 之间）。';
   return ok(
     state,
-    [`${state.head.name} 已重置到 ${target}（${mode}）`],
+    [
+      `${state.head.name} 已重置到 ${target}（${mode}）`,
+      softHard,
+      '提示：可执行 git status，对照 soft / hard 后「工作区」文案的差别。',
+    ],
     {
       title: `reset --${mode}`,
-      summary: `当前分支最新提交从 ${tip} 回退到 ${target}。`,
-      detail: modeNote + ' 旧提交可能仍存在于对象库，直到被回收。',
-      related: ['git log --oneline', 'git status'],
+      summary: `当前分支最新提交从 ${tip} 回退到 ${target}。三种模式都会移动分支指针。`,
+      detail:
+        softHard +
+        ' 记法：soft = 只动历史指针；mixed = 指针 + 改动回工作区；hard = 指针 + 工作区一起对齐。旧提交对象可能仍在，直到无人引用被回收。',
+      related: ['git status', 'git log --oneline', 'git revert HEAD'],
     },
     { movedRefs: [state.head.name], newHead: true },
   );

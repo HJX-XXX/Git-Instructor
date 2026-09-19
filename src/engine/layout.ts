@@ -46,10 +46,12 @@ const HASH_COL_W = 56;
 const HASH_RAIL_GAP = 20;
 /** 默认说明列起点（lane 很少时） */
 const MSG_X_MIN = 180;
-/** 本地分支标签列 */
-export const REF_X = 480;
+/** 说明列与 HEAD/分支列之间预留宽度（HEAD 签 + 箭头 + 间距） */
+const HEAD_COL_RESERVE = 130;
+/** 本地分支标签列（给 HEAD 指针 + 提交说明留出空间） */
+export const REF_X = 560;
 /** origin/* 远程标签列（与本地分开） */
-export const ORIGIN_REF_X = 700;
+export const ORIGIN_REF_X = 800;
 export const MSG_MAX_CHARS = 48;
 /** 布局用的 git init 锚点（非真实 commit） */
 export const INIT_NODE_ID = '__git_init__';
@@ -59,7 +61,9 @@ const PAD_BOTTOM = 36;
 function textColumnsForLanes(laneCount: number): { idX: number; msgX: number } {
   const lastRail = RAIL_X + Math.max(0, laneCount - 1) * LANE_GAP_X;
   const idX = lastRail + HASH_RAIL_GAP + HASH_COL_W;
-  const msgX = Math.max(MSG_X_MIN, idX + 16);
+  // 说明列不得顶到 HEAD/分支区域
+  const msgXMax = Math.max(MSG_X_MIN, REF_X - HEAD_COL_RESERVE - 160);
+  const msgX = Math.min(Math.max(MSG_X_MIN, idX + 16), msgXMax);
   return { idX, msgX };
 }
 

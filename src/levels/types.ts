@@ -6,6 +6,8 @@ export type AppMode = 'onboarding' | 'level' | 'free';
 export interface LevelLogEntry {
   input: string;
   ok: boolean;
+  /** 执行该命令时的模拟用户（顶栏切换也会记入日志） */
+  user?: 'alice' | 'bob';
 }
 
 export interface LevelObjectiveState {
@@ -20,6 +22,8 @@ export interface LevelCheckResult {
   feedback: string;
 }
 
+export type GraphFlashFocus = 'head' | 'branch' | 'commit' | 'tip' | 'remote';
+
 export interface LevelConcept {
   id: string;
   term: string;
@@ -32,8 +36,13 @@ export interface LevelConcept {
   /** 实操提示：一点即可填入终端的命令 */
   practice?: {
     label: string;
+    /** 主命令（兼容旧字段） */
     command: string;
+    /** 一张卡内可有多条命令，按顺序执行 */
+    commands?: string[];
   };
+  /** 该卡目标完成后，提交图上闪烁的目标（L0 同款样式） */
+  graphFocus?: GraphFlashFocus;
 }
 
 export interface LevelCheckCtx {

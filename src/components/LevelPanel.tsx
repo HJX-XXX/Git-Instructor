@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import type { MouseEvent as ReactMouseEvent } from 'react';
 import { LEVELS } from '../levels/catalog';
 import { STAGES } from '../levels/stages';
 import type { LevelCheckResult, LevelDef, LevelProgress } from '../levels/types';
@@ -34,7 +35,6 @@ export function LevelPanel({
   onFocusConcept,
   onOpenStory,
 }: Props) {
-  const [openHints, setOpenHints] = useState<number[]>([]);
   const [openConceptIds, setOpenConceptIds] = useState<string[]>([]);
   const [revealedPractices, setRevealedPractices] = useState<string[]>([]);
   /** 默认展开当前关所在阶段，其余保持上次状态 */
@@ -42,6 +42,45 @@ export function LevelPanel({
   const won = checkResult?.win ?? false;
   const hasNext = LEVELS.some((l) => l.id === level.id + 1);
   const storyRef = useRef<HTMLButtonElement | null>(null);
+
+  /** 展开/收起后，把卡片上「点击点」对齐回鼠标所在屏幕位置，避免列表跳动 */
+  const alignCardToPointer = (
+    cardEl: HTMLElement | null,
+    mouseY: number,
+    anchorInCard: number,
+  ) => {
+    requestAnimationFrame(() => {
+      const card = cardEl ?? null;
+      if (!card) return;
+      const wrap = card.closest('.level-scroll') as HTMLElement | null;
+      if (!wrap) return;
+      const rect = card.getBoundingClientRect();
+      const h = Math.max(rect.height, 1);
+      const anchor = Math.min(Math.max(anchorInCard, 0), h - 1);
+      const currentY = rect.top + anchor;
+      wrap.scrollTop += currentY - mouseY;
+    });
+  };
+
+  const toggleConceptAt = (
+    e: ReactMouseEvent<HTMLElement>,
+    conceptId: string,
+    nextOpen: boolean,
+  ) => {
+    const card = (e.currentTarget as HTMLElement).closest('.concept-card') as HTMLElement | null;
+    const mouseY = e.clientY;
+    let anchor = 12;
+    if (card) {
+      const rect = card.getBoundingClientRect();
+      anchor = Math.min(Math.max(mouseY - rect.top, 0), Math.max(rect.height - 1, 0));
+    }
+    setOpenConceptIds((prev) => {
+      if (nextOpen) return prev.includes(conceptId) ? prev : [...prev, conceptId];
+      return prev.filter((id) => id !== conceptId);
+    });
+    if (nextOpen) onFocusConcept(conceptId);
+    alignCardToPointer(card, mouseY, anchor);
+  };
 
   // 切换关卡时让关卡说明闪烁，提醒用户阅读
   useEffect(() => {
@@ -61,7 +100,7 @@ export function LevelPanel({
           <div>
             <h2>关卡学习</h2>
             <p>
-              L{level.id} / {LEVELS.length} · 已通关 {progress.completed.length}
+              L{level.id} · 共 {LEVELS.length} 关 · 已通关 {progress.completed.length}
             </p>
           </div>
           <button type="button" className="btn-mini" onClick={onEnterFree}>
@@ -79,10 +118,8 @@ export function LevelPanel({
         >
           <div className="level-kicker">{level.id === 0 ? '导读' : `第 ${level.id} 关`}</div>
           <h3 className="level-title">{level.title}</h3>
-          <p className="level-story">{level.intro?.summary ?? level.story}</p>
-          {level.intro?.detail && (
-            <p className="level-story-detail">{level.intro.detail}</p>
-          )}
+          {/* 收起时只显示精简 story；详细 intro 在中央弹层中展示 */}
+          <p className="level-story">{level.story}</p>
           <span className="level-open-hint">查看本关学习内容</span>
         </button>
 
@@ -105,27 +142,6 @@ export function LevelPanel({
           {checkResult && !won && (
             <p className="level-feedback">{checkResult.feedback}</p>
           )}
-          {won && (
-            <div className="level-win-box">
-              <p className="level-win-title">本关完成</p>
-              <p className="level-win-summary">{level.winExplanation.summary}</p>
-              <div className="level-win-actions">
-                {hasNext && (
-                  <button type="button" className="btn btn-primary" onClick={onNextLevel}>
-                    下一关
-                  </button>
-                )}
-                {!hasNext && (
-                  <button type="button" className="btn btn-primary" onClick={onEnterFree}>
-                    进入自由练习
-                  </button>
-                )}
-                <button type="button" className="btn" onClick={onResetLevel}>
-                  再练一次
-                </button>
-              </div>
-            </div>
-          )}
         </section>
 
         {level.concepts && level.concepts.length > 0 && (
@@ -137,13 +153,6 @@ export function LevelPanel({
                 const read = readConcepts.includes(c.id) || objDone;
                 const active = activeConcept === c.id;
                 const open = openConceptIds.includes(c.id);
-                const setOpen = (next: boolean) => {
-                  setOpenConceptIds((prev) => {
-                    if (next) return prev.includes(c.id) ? prev : [...prev, c.id];
-                    return prev.filter((id) => id !== c.id);
-                  });
-                  if (next) onFocusConcept(c.id);
-                };
                 return (
                   <article
                     key={c.id}
@@ -151,11 +160,10 @@ export function LevelPanel({
                     className={`concept-card${read ? ' is-read' : ''}${active ? ' is-active' : ''}${open ? ' is-open' : ''}`}
                     onClick={(e) => {
                       const t = e.target as HTMLElement;
-                      // 命令/标记等按钮自身处理，不在此切换
                       if (t.closest('button.chip, button.concept-practice-reveal, button.btn-mini')) {
                         return;
                       }
-                      setOpen(!open);
+                      toggleConceptAt(e, c.id, !open);
                     }}
                   >
                     <button
@@ -164,7 +172,7 @@ export function LevelPanel({
                       aria-expanded={open}
                       onClick={(e) => {
                         e.stopPropagation();
-                        setOpen(!open);
+                        toggleConceptAt(e, c.id, !open);
                       }}
                     >
                       <span className="concept-chev" aria-hidden>
@@ -182,11 +190,14 @@ export function LevelPanel({
                       <div className="concept-panel">
                         <p className="concept-body">{c.body}</p>
                         {c.tips && c.tips.length > 0 && (
-                          <ul className="concept-tips">
-                            {c.tips.map((t) => (
-                              <li key={t}>{t}</li>
-                            ))}
-                          </ul>
+                          <div className="concept-tips-block">
+                            <p className="concept-tips-label">要点</p>
+                            <ul className="concept-tips">
+                              {c.tips.map((t) => (
+                                <li key={t}>{t}</li>
+                              ))}
+                            </ul>
+                          </div>
                         )}
                         {c.practice && (
                           <div className="concept-practice">
@@ -206,17 +217,29 @@ export function LevelPanel({
                               </button>
                             ) : (
                               <>
-                                <button
-                                  type="button"
-                                  className="chip concept-practice-cmd"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    onFill(c.practice!.command);
-                                  }}
-                                >
-                                  {c.practice.command}
-                                </button>
-                                <p className="concept-practice-hint">点击填入终端，回车执行</p>
+                                <div className="concept-practice-cmds">
+                                  {(c.practice.commands?.length
+                                    ? c.practice.commands
+                                    : [c.practice.command]
+                                  ).map((cmd) => (
+                                    <button
+                                      key={cmd}
+                                      type="button"
+                                      className="chip concept-practice-cmd"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        onFill(cmd);
+                                      }}
+                                    >
+                                      {cmd}
+                                    </button>
+                                  ))}
+                                </div>
+                                <p className="concept-practice-hint">
+                                  {(c.practice.commands?.length ?? 1) > 1
+                                    ? '两条命令都要执行：按顺序点击填入终端并回车'
+                                    : '点击填入终端，回车执行'}
+                                </p>
                               </>
                             )}
                           </div>
@@ -243,6 +266,29 @@ export function LevelPanel({
           </section>
         )}
 
+        {won && (
+          <section className="level-block">
+            <div className="level-win-box">
+              <p className="level-win-title">本关完成</p>
+              <p className="level-win-summary">{level.winExplanation.summary}</p>
+              <div className="level-win-actions">
+                {hasNext ? (
+                  <button type="button" className="btn btn-primary" onClick={onNextLevel}>
+                    下一关
+                  </button>
+                ) : (
+                  <button type="button" className="btn btn-primary" onClick={onEnterFree}>
+                    进入自由练习
+                  </button>
+                )}
+                <button type="button" className="btn" onClick={onResetLevel}>
+                  再练一次
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
+
         <section className="level-block">
           <h4>建议命令</h4>
           <div className="level-cmds">
@@ -251,30 +297,6 @@ export function LevelPanel({
                 {cmd}
               </button>
             ))}
-          </div>
-        </section>
-
-        <section className="level-block">
-          <h4>提示</h4>
-          <div className="level-hints">
-            {level.hints.map((h, i) => {
-              const open = openHints.includes(i);
-              return (
-                <button
-                  key={h}
-                  type="button"
-                  className={`hint-row${open ? ' is-open' : ''}`}
-                  onClick={() => {
-                    setOpenHints((prev) =>
-                      prev.includes(i) ? prev.filter((x) => x !== i) : [...prev, i],
-                    );
-                  }}
-                >
-                  <span className="hint-label">提示 {i + 1}</span>
-                  <span className="hint-body">{open ? h : '点击展开'}</span>
-                </button>
-              );
-            })}
           </div>
         </section>
 
@@ -290,12 +312,25 @@ export function LevelPanel({
                   type="button"
                   className="level-stage-head"
                   aria-expanded={!collapsed}
-                  onClick={() => {
+                  onClick={(e) => {
+                    const card = (e.currentTarget as HTMLElement).closest(
+                      '.level-stage',
+                    ) as HTMLElement | null;
+                    const mouseY = e.clientY;
+                    let anchor = 12;
+                    if (card) {
+                      const rect = card.getBoundingClientRect();
+                      anchor = Math.min(
+                        Math.max(mouseY - rect.top, 0),
+                        Math.max(rect.height - 1, 0),
+                      );
+                    }
                     setCollapsedStages((prev) =>
                       prev.includes(stage.id)
                         ? prev.filter((id) => id !== stage.id)
                         : [...prev, stage.id],
                     );
+                    alignCardToPointer(card, mouseY, anchor);
                   }}
                 >
                   <span className="level-stage-chev" aria-hidden>

@@ -261,20 +261,26 @@ export const LEVELS: LevelDef[] = [
     id: 2,
     stageId: 's1',
     title: '看懂仓库状态',
-    story: '学习两条只读命令：git status 查看状态，git log 查看历史。',
+    story: '用 status / log 只读查看仓库：你在哪条分支、工作区干不干净、历史怎么长出来。',
+    intro: {
+      summary:
+        'status 看「现在在哪」：当前分支、HEAD、以及工作区是否干净。log 看「从哪来」：这条分支上的提交历史。',
+      detail:
+        '什么是「工作区」？\n\n工作区（working tree）= 你正在编辑的那些文件，也就是项目目录里能看到的内容。\n\n可以和提交历史这样区分：\n- 提交（commit）：已经存档的快照，画在提交图上的圆点\n- 工作区：尚未存档、正在改的文件\n\nstatus 里的「工作区」：\n- 干净：文件和当前提交一致，没有待提交的改动\n- 有改动：你改过文件但还没 commit（本沙箱用简化标记模拟）\n\n本关只读观察，不要改分支。',
+    },
     objectiveLabels: ['执行过 git status', '执行过 git log --oneline', '仓库仍有 main 提交'],
     startWorld: () => createDemoWorld(),
     concepts: [
       {
         id: 'status',
         term: '1 · status 查状态',
-        teaser: '先问一句：我现在在哪个分支？工作区干不干净？',
+        teaser: '现在在哪条分支？工作区干不干净？',
         body:
-          'status 回答「现在站在哪」：当前分支名、HEAD 指向、工作区是否干净。它只读，不会改提交图。',
+          '命令\ngit status\n\nstatus 回答三件事\n1. 当前分支是哪条（如 main）\n2. HEAD 指向哪里\n3. 工作区是否干净\n\n什么是「工作区」？\n工作区 = 你正在编辑的文件（项目目录里能看到的内容）。\n它和「已经提交的历史」是两回事：\n- 提交：图上的圆点，已存档\n- 工作区：还没 commit 的改动\n\n「干净」是什么意思？\n工作区干净 = 当前文件和最新提交一致，没有待提交改动。\n有改动 = 文件被改过，但还没记成提交。\n\n本关\nstatus 是只读命令，不会改提交图。\n沙箱里默认显示工作区干净。',
         tips: [
           '先 status 再做危险操作，能避免很多误操作',
-          '关注「当前分支」一行',
-          '本沙箱工作区默认干净',
+          '重点看「当前分支」和「工作区」两处',
+          '动手前 status，动手后 log，是好习惯',
         ],
         practice: {
           label: '执行只读命令，查看当前仓库状态',
@@ -284,14 +290,10 @@ export const LEVELS: LevelDef[] = [
       {
         id: 'log',
         term: '2 · log 看历史',
-        teaser: '再问一句：这条分支是怎么长出来的？',
+        teaser: '这条分支是怎么长出来的？',
         body:
-          'log 按祖先链列出提交。--oneline 每个提交一行，方便对照图上的圆点与说明。',
-        tips: [
-          '新提交在上（或在前）',
-          '每行一般包含短 hash 与提交说明',
-          '与中间提交图对照着看',
-        ],
+          '命令\ngit log --oneline\n\nlog 做什么\n按祖先链列出提交，回答「从哪来」。\n\n怎么读\n- --oneline：一个提交一行\n- 一般含短 hash 与提交说明\n- 新提交在上（或在前）\n\n和图对照\n中间提交图上的圆点，和 log 里的行是对应的。\n\n和 status 的分工\n- status：现在在哪、工作区如何\n- log：这条分支有哪些提交',
+        tips: ['只读命令', '和提交图对照着看', '本关不要切换或删除分支'],
         practice: {
           label: '用简洁格式查看提交历史',
           command: 'git log --oneline',
@@ -299,15 +301,11 @@ export const LEVELS: LevelDef[] = [
       },
       {
         id: 'keep-main',
-        term: '3 · 不要改图',
-        teaser: '本关只观察。确认 main 上仍有演示提交即可。',
+        term: '3 · 只观察，不改图',
+        teaser: '本关只看不改：main 上仍有演示提交即可。',
         body:
-          'status 与 log 都是只读命令。不要切换、删除分支，也不要 reset。看完输出即可通关。',
-        tips: [
-          '只读命令不会移动分支指针',
-          '若误操作，可点「重置本关」',
-          '习惯：动手前 status，动手后 log',
-        ],
+          '本关约束\n- 只执行 status、log 这类只读命令\n- 不要 switch、branch -d、reset\n- 确认 main 上仍有演示提交即可通关\n\n若误操作\n点「重置本关」即可恢复到本关起点。',
+        tips: ['只读命令不会移动分支指针', '目标：看懂 status / log 在说什么', '下一关再动手建分支'],
         practice: {
           label: '再确认一次当前状态（只读）',
           command: 'git status',
@@ -316,14 +314,16 @@ export const LEVELS: LevelDef[] = [
     ],
     hints: [
       '按卡片顺序：先 status，再 log --oneline。',
+      'status 里「工作区」= 正在编辑、尚未提交的文件是否干净。',
       '第三张卡是约束：本关不要改分支，只观察。',
-      '两条都成功执行后即可通关。',
     ],
     suggestedCommands: ['git status', 'git log --oneline'],
     winExplanation: {
       title: '通关：会查状态和历史了',
-      summary: 'status 回答「当前分支是什么、工作区是否干净、HEAD 指向谁」；log 回答「这条分支是怎么长出来的」。',
-      detail: '以后做 merge / reset 之前，先 status + log，能避免很多误操作。',
+      summary:
+        'status 回答「当前分支是什么、工作区是否干净、HEAD 指向谁」；log 回答「这条分支是怎么长出来的」。',
+      detail:
+        '工作区（working tree）\n= 你正在编辑、尚未 commit 的文件。\n干净：与最新提交一致\n有改动：改过但还没提交（沙箱用简化标记模拟）\n\n以后做 merge / reset 之前，先 status + log，能避免很多误操作。',
       related: ['git branch feature', 'git commit -m "feat: x"'],
     },
     check: ({ before, after, log }) => checkLevel2(before, after, log),
@@ -413,9 +413,9 @@ export const LEVELS: LevelDef[] = [
     title: '切换分支并提交',
     story: '学习切换分支后提交，观察历史如何分叉。',
     objectiveLabels: [
-      'HEAD 在 feature 上',
-      'feature 上至少有 1 个 main 没有的提交',
-      'main 最新提交未变',
+      '已把 HEAD 指向 feature，并在其上提交',
+      'feature 上有 main 没有的提交',
+      '已 switch main，并在其后执行 log 确认 main 未前进',
     ],
     startWorld: () => createDemoWorld(),
     concepts: [
@@ -444,7 +444,7 @@ export const LEVELS: LevelDef[] = [
         tips: [
           '说明随意写',
           '图上 feature 标签上方会多一个点',
-          'main 应停在原处',
+          '此时还不能用 log 证明 main 没动（log 显示的是当前分支历史）',
         ],
         practice: {
           label: '在 feature 上创建一笔提交',
@@ -454,28 +454,30 @@ export const LEVELS: LevelDef[] = [
       {
         id: 'main-unmoved',
         term: '3 · main 不应移动',
-        teaser: '对照图：main 的最新提交不能变。',
+        teaser: '先切到 main，再用 log 确认它还停在原提交。',
         body:
-          '只有当前分支会前进。若 main 也动了，说明提交时 HEAD 指错了分支，或误操作了其它命令。',
+          '注意：git log 显示的是「当前分支」的历史。\n若还站在 feature 上就执行 log，看到的是 feature 的提交，无法证明 main 没动。\n\n正确观察步骤：\n1. git switch main（把 HEAD 指向 main）\n2. git log --oneline（看 main 的历史）\n3. 对照：main 最新提交应仍是切换前的那个，没有多出 feature 上的新圆点\n\n只有当前分支会前进；main 未动，说明刚才的 commit 与 main 无关。',
         tips: [
-          '对比提交前后的 main 标签位置',
-          '若 main 动了，可重置本关',
-          '这就是分叉的形状',
+          '先 git switch main，再 git log --oneline',
+          '对照图上 main 标签是否还在原圆点',
+          '若 main 动了，可点「重置本关」',
         ],
         practice: {
-          label: '用 log 观察分叉后的历史',
-          command: 'git log --oneline',
+          label: '切到 main，并用 log 确认 main 未前进',
+          command: 'git switch main',
+          commands: ['git switch main', 'git log --oneline'],
         },
       },
     ],
     hints: [
       '第一张卡：把 HEAD 指向 feature。',
       '第二张卡：在 feature 上 commit。',
-      '第三张卡：确认 main 没有动。',
+      '第三张卡：先 switch main，再 log，确认 main 没动。',
     ],
     suggestedCommands: [
       'git switch -c feature',
       'git commit -m "feat: 在 feature 上的改动"',
+      'git switch main',
       'git log --oneline',
     ],
     winExplanation: {
@@ -501,17 +503,17 @@ export const LEVELS: LevelDef[] = [
       {
         id: 'to-main',
         term: '1 · HEAD 指向 main',
-        teaser: '合并要发生在 main 上，先把 HEAD 切回 main。',
+        teaser: '合并前确认：HEAD 在 main 上（本关起点已是 main）。',
         body:
-          'merge 推进的是当前分支。要让 main 前进，必须先让 HEAD 指向 main，再执行合并。',
+          'merge 推进的是当前分支。要让 main 前进，必须确保 HEAD 指向 main，再执行合并。本关进入时 HEAD 已在 main，用 status 确认即可。',
         tips: [
-          '当前可能在 feature 上',
-          '切换不改提交内容',
-          '切回后看橙色 HEAD 指向 main',
+          '起点里 HEAD 已在 main 上',
+          '起点中 main 已落后 feature（feature 多一笔提交）',
+          'merge 推进的是当前分支，必须站在 main 上合并 feature',
         ],
         practice: {
-          label: '把 HEAD 切回 main',
-          command: 'git switch main',
+          label: '确认 HEAD 在 main 上',
+          command: 'git status',
         },
       },
       {
@@ -548,11 +550,11 @@ export const LEVELS: LevelDef[] = [
       },
     ],
     hints: [
-      '第一张卡：切回 main。',
-      '第二张卡：执行合并。',
+      '起点里 HEAD 已在 main；先 status 确认，再 merge feature。',
+      '第二张卡：在 main 上执行 merge feature。',
       '第三张卡：确认没有新圆点。',
     ],
-    suggestedCommands: ['git switch main', 'git merge feature', 'git log --oneline'],
+    suggestedCommands: ['git status', 'git merge feature', 'git log --oneline'],
     winExplanation: {
       title: '通关：Fast-forward',
       summary: '当前分支没有分叉时，merge 只是把分支指针挪到目标分支的最新提交，历史保持线性。',
@@ -612,9 +614,9 @@ export const LEVELS: LevelDef[] = [
         body:
           'merge commit 的其中一个父提交来自 feature，所以 feature 历史被完整保留在 main 的祖先链里。',
         tips: [
-          '用 log 看是否出现两条线的提交',
-          '之后可删除已合并的 feature',
-          '这是集成的关键形状',
+          '用 log 看是否出现两条线上的提交',
+          'feature 的提交已成为 main 的祖先，可删 feature',
+          '双父节点表示：main 已同时包含两边的历史',
         ],
         practice: {
           label: '查看合并后的历史',
@@ -630,7 +632,7 @@ export const LEVELS: LevelDef[] = [
     suggestedCommands: ['git switch main', 'git merge feature', 'git log --oneline'],
     winExplanation: {
       title: '通关：双父合并节点',
-      summary: 'merge commit 同时记录两边历史，是理解冲突与集成的关键形状。',
+      summary: 'merge commit 同时保留两边的提交，main 从此可以追溯到 feature 的全部历史。',
       detail: '真实 Git 在同文件冲突时会停下；本沙箱工作区干净时直接生成节点。',
       related: ['git log --oneline', 'git branch -d feature'],
     },
@@ -644,7 +646,7 @@ export const LEVELS: LevelDef[] = [
     objectiveLabels: [
       '已查看当前提交历史',
       'main 最新提交已回退到上一个提交',
-      'HEAD 仍在 main 上',
+      '已执行 status 确认 HEAD 仍在 main',
     ],
     startWorld: startL7,
     concepts: [
@@ -743,6 +745,7 @@ export const LEVELS: LevelDef[] = [
           label: '以 Alice 提交一笔共享改动',
           command: 'git commit -m "alice: 共享改动"',
         },
+        graphFocus: 'commit',
       },
       {
         id: 'alice-push',
@@ -759,6 +762,7 @@ export const LEVELS: LevelDef[] = [
           label: '把 main 发布到远程',
           command: 'git push origin main',
         },
+        graphFocus: 'remote',
       },
       {
         id: 'bob-pull',
@@ -775,6 +779,7 @@ export const LEVELS: LevelDef[] = [
           label: '以 Bob 拉取远程更新',
           command: 'git pull',
         },
+        graphFocus: 'remote',
       },
     ],
     hints: [
@@ -800,54 +805,92 @@ export const LEVELS: LevelDef[] = [
     id: 9,
     stageId: 's4',
     title: 'soft 与 hard 对比',
-    story: '学习 reset 的 soft 与 hard：同一回退动作，对工作区标记的处理不同。',
+    story: '两种 reset 都会拨回指针；差别在于改动是否一起丢掉。',
+    intro: {
+      summary: '用 status 对照 soft 与 hard：改动还在，还是工作区已干净。',
+      detail:
+        '三种 reset 都会移动当前分支的指针（例如从最新提交拨回上一个）。\n\n可以记成三档：\nsoft：指针回去，改动还在（相当于还在暂存区，可再 commit）\nmixed（默认）：指针回去，改动回到工作区、变成未暂存\nhard：指针回去，工作区也强制对齐目标提交，未提交的改动会丢\n\n本沙箱用 status 里的「工作区是否干净」来模拟：\nsoft 后会显示仍有改动，hard 后变干净。',
+    },
     objectiveLabels: [
       '已查看当前提交历史',
       '已用 soft reset 回退一步',
+      'soft 后执行 git status（对照仍有改动）',
       '已用 hard reset 再回退一步',
+      'hard 后执行 git status（对照工作区干净）',
     ],
     startWorld: startL9,
     concepts: [
       {
         id: 'see-two-oops',
         term: '1 · 先看历史',
-        teaser: 'main 上有两笔错误提交，先看清它们。',
-        body: '回退前用 log 记下最近两笔，避免拨错位置。',
-        tips: ['新提交在上', '两笔都叫 oops', 'log 只读'],
+        teaser: '看清两笔错误提交再动手。',
+        body:
+          '做什么\n用 log 看清当前 main 上最近两笔提交。\n\n为什么\n回退前要确认「现在在哪、要丢哪一笔」。\n\n预期现象\n- 新提交在上（或在前）\n- 两笔说明里都带 oops\n- 它们下面应还有正常提交',
+        tips: ['log 只读，不会改图', '可点「显示命令」', '记住最终要退回到的目标提交'],
         practice: { label: '查看提交历史', command: 'git log --oneline' },
       },
       {
         id: 'soft-reset',
-        term: '2 · soft 回退',
-        teaser: '只把分支指针拨回一步，不清理工作区标记。',
-        body: 'soft reset 移动分支指针，本沙箱用 dirty 标记表示仍有未提交改动。',
-        tips: ['指针回退', '讲解会说明与 hard 的差别', '不要切换分支'],
+        term: '2 · soft：只动指针',
+        teaser: 'soft 拨回一步，改动还在。',
+        body:
+          '命令\ngit reset --soft HEAD~1\n\n做什么\n只把 main 的分支指针从最新 oops 拨回上一个提交。\n\n不做什么\n不丢掉「还没提交的改动」。\n\n怎么验证\n下一步执行 git status，应看到仍有改动。',
+        tips: [
+          'main 上少了一笔 oops',
+          'HEAD 仍在 main，reset 不切换分支',
+          '适用：提交说明写错，退回去再 commit',
+        ],
         practice: { label: 'soft 回退 HEAD~1', command: 'git reset --soft HEAD~1' },
+        graphFocus: 'tip',
+      },
+      {
+        id: 'status-after-soft',
+        term: '3 · soft 后看 status',
+        teaser: 'status 对照：工作区仍有改动。',
+        body:
+          '命令\ngit status\n\n请重点看「工作区」这一行\nsoft 后应显示：工作区有未提交改动（教学模拟）\n\n含义\n指针回去了，但改动还在，可以继续 commit。\n\n请记住这句\nsoft → 仍有改动\n（稍后 hard 之后会变成「干净」，两相对照）',
+        tips: ['这一步只读', '不改提交图', '把这句话和 hard 后的 status 对比记下来'],
+        practice: { label: 'soft 后查看状态', command: 'git status' },
       },
       {
         id: 'hard-reset',
-        term: '3 · hard 再回退',
-        teaser: '再拨一步，并清理工作区标记。',
-        body: 'hard reset 在移动指针的同时清掉改动标记。分享过的提交一般改用 revert。',
-        tips: ['再回退一步', '最终 main 停在两笔 oops 之前', '对比 soft / hard'],
+        term: '4 · hard：指针 + 工作区',
+        teaser: 'hard 再拨一步，工作区也清掉。',
+        body:
+          '命令\ngit reset --hard HEAD~1\n\n做什么\n1. 分支指针再拨回一步\n2. 工作区强制对齐目标提交\n\n结果\n未提交的改动会被丢掉（沙箱里表现为 status 变干净）。\n\n提醒\n- 已 push 的公共历史一般改用 revert\n- hard 要谨慎，本地试验后再用',
+        tips: ['main 再少一笔 oops', '最终停在两笔 oops 之前', '下一步再用 status 验证'],
         practice: { label: 'hard 再回退 HEAD~1', command: 'git reset --hard HEAD~1' },
+        graphFocus: 'tip',
+      },
+      {
+        id: 'status-after-hard',
+        term: '5 · hard 后看 status',
+        teaser: '再 status：工作区已干净。',
+        body:
+          '命令\ngit status\n\n请重点看「工作区」这一行\nhard 后应显示：工作区干净\n\n和 soft 对照着记\n\nsoft  → 指针回去，改动还在（仍有未提交改动）\nmixed → 指针回去，改动变成未暂存（默认）\nhard  → 指针回去，工作区也对齐（干净）\n\n共同点\n三种 reset 都会移动当前分支指针。',
+        tips: ['hard 后：干净', 'soft 后：仍有改动', '差别只在暂存区/工作区如何处理'],
+        practice: { label: 'hard 后查看状态', command: 'git status' },
       },
     ],
     hints: [
-      '第一张卡 log。',
-      '第二张卡 soft reset 一步。',
-      '第三张卡 hard reset 再一步。',
+      '顺序：log → soft → status（仍有改动）→ hard → status（干净）。',
+      '两次 status 是本关重点：用文案差别记住 soft / hard。',
+      '沙箱没有真实文件，对照 status 文案即可。',
     ],
     suggestedCommands: [
       'git log --oneline',
       'git reset --soft HEAD~1',
+      'git status',
       'git reset --hard HEAD~1',
+      'git status',
     ],
     winExplanation: {
-      title: '通关：soft 与 hard',
-      summary: '两者都会移动分支指针；hard 还会清掉工作区标记。',
-      detail: '已分享的历史优先用 revert，避免改写公共分支。',
-      related: ['git revert HEAD', 'git log --oneline'],
+      title: '通关：用 status 分清 soft 与 hard',
+      summary:
+        '两种 reset 都会把分支指针拨回；soft 后 status 仍有改动，hard 后 status 变干净——这就是工作区是否被一起对齐。',
+      detail:
+        '对照表：\n--soft 只动分支指针，改动留在暂存区\n--mixed（默认）指针回去，改动回到工作区未暂存\n--hard 指针和工作区一起对齐，会丢未提交改动\n\n公共分支上已分享的提交优先 git revert。',
+      related: ['git status', 'git revert HEAD', 'git log --oneline'],
     },
     check: ({ before, after, log }) => checkLevel9(before, after, log),
   },
@@ -875,7 +918,8 @@ export const LEVELS: LevelDef[] = [
         id: 'do-revert',
         term: '2 · 执行 revert',
         teaser: '生成说明以 Revert 开头的新提交。',
-        body: 'revert 不删除原提交，而是在当前 tip 上追加一笔反向提交。',
+        body:
+          'revert 不删除原提交，而是在当前分支的最新提交之上追加一笔反向提交。',
         tips: ['图上会多一个圆点', '原提交仍在', '与 reset 对比'],
         practice: { label: '撤销当前提交', command: 'git revert HEAD' },
       },
@@ -883,7 +927,7 @@ export const LEVELS: LevelDef[] = [
         id: 'still-there',
         term: '3 · 原提交仍可追溯',
         teaser: '用 log 确认历史仍向前，原提交还在。',
-        body: '从 main 的新 tip 回溯，应仍能看到被撤销的那一笔。',
+        body: '从 main 的最新提交往回看，应仍能看到被撤销的那一笔。',
         tips: ['历史未被抹掉', '这就是 revert 与 reset 的关键差别', '适合已推送的提交'],
         practice: { label: '再查看一次历史', command: 'git log --oneline' },
       },
@@ -914,7 +958,7 @@ export const LEVELS: LevelDef[] = [
         id: 'on-feat',
         term: '1 · 在 feature 上',
         teaser: 'rebase 的是当前分支，先让 HEAD 指向 feature。',
-        body: '当前分支的独有提交会被重放到目标分支 tip 之上。',
+        body: '当前分支的独有提交会被重放到目标分支的最新提交之上。',
         tips: ['HEAD 应在 feature', 'main 先有独有提交', '观察分叉'],
         practice: { label: 'HEAD 指向 feature', command: 'git switch feature' },
       },
@@ -922,7 +966,7 @@ export const LEVELS: LevelDef[] = [
         id: 'do-rebase',
         term: '2 · rebase main',
         teaser: '把 feature 接到 main 之上。',
-        body: 'rebase 后 feature 的提交变成 main tip 的后代，图更线性。',
+        body: 'rebase 后，feature 的提交会接在 main 最新提交之后，图更接近一条直线。',
         tips: ['不是 merge 双父', '公共历史只保留一份', '共享分支慎用'],
         practice: { label: '变基到 main', command: 'git rebase main' },
       },
@@ -931,7 +975,11 @@ export const LEVELS: LevelDef[] = [
         term: '3 · 观察线性历史',
         teaser: '用 log 对照：没有双父节点。',
         body: '与 merge 对比：rebase 重写的是当前分支的独有提交。',
-        tips: ['feature tip 单父', '能追溯到 main tip', '这就是线性化'],
+        tips: [
+          'feature 的最新提交应只有一个父提交（没有双父节点）',
+          '从 feature 应能追溯到 main 的最新提交',
+          '历史更接近一条直线，这就是「线性化」',
+        ],
         practice: { label: '查看历史', command: 'git log --oneline' },
       },
     ],
@@ -939,7 +987,7 @@ export const LEVELS: LevelDef[] = [
     suggestedCommands: ['git switch feature', 'git rebase main', 'git log --oneline'],
     winExplanation: {
       title: '通关：rebase',
-      summary: 'rebase 把当前分支独有提交重放到目标 tip 之上，历史更线性。',
+      summary: 'rebase 把当前分支的独有提交，重放到目标分支的最新提交之上，历史更线性。',
       detail: '不要对已推送且他人在用的分支 rebase。',
       related: ['git merge main', 'git log --oneline'],
     },
@@ -962,17 +1010,19 @@ export const LEVELS: LevelDef[] = [
         id: 'alice-publish',
         term: '1 · Alice 发布',
         teaser: '起点里 Alice 已有一笔未推送提交；请先 push 到 origin。',
-        body: '本关起点：Alice 已 commit、尚未 push；Bob 与旧远程 tip 一致。',
+        body: '本关起点：Alice 已 commit、尚未 push；Bob 本地 main 仍停在远程更新前的位置。',
         tips: ['顶栏确认 Alice', 'push 后远程 main 前进', 'Bob 看不到自动更新'],
         practice: { label: '确认已 push（若尚未则 push）', command: 'git push origin main' },
+        graphFocus: 'remote',
       },
       {
         id: 'bob-fetch',
         term: '2 · Bob fetch',
         teaser: '只下载远程引用，不合并进本地 main。',
-        body: 'fetch 后 origin/main 会更新，Bob 本地 main 可以仍停在旧 tip。',
+        body: 'fetch 后 origin/main 会更新，Bob 本地 main 仍可以停在原来的位置。',
         tips: ['切到 Bob', '先 fetch 再观察', '本地分支不会自动变'],
         practice: { label: 'Bob 执行 fetch', command: 'git fetch' },
+        graphFocus: 'remote',
       },
       {
         id: 'bob-pull-sync',
@@ -981,6 +1031,7 @@ export const LEVELS: LevelDef[] = [
         body: 'pull = 下载并合并。完成后 Bob 的 main 应与 origin 一致。',
         tips: ['仍在 Bob', 'pull 会改本地 main', '对比 fetch'],
         practice: { label: 'Bob 执行 pull', command: 'git pull' },
+        graphFocus: 'remote',
       },
     ],
     hints: ['Alice：先 push。', 'Bob：fetch。', 'Bob：pull。'],
@@ -1013,6 +1064,7 @@ export const LEVELS: LevelDef[] = [
         body: '非快进 push 会覆盖他人提交，因此被拒绝。这是协作保护。',
         tips: ['顶栏 Alice', '观察终端报错', '不要 force push'],
         practice: { label: 'Alice 执行 push', command: 'git push origin main' },
+        graphFocus: 'remote',
       },
       {
         id: 'do-pull',
@@ -1021,6 +1073,7 @@ export const LEVELS: LevelDef[] = [
         body: 'pull 后本地包含双方历史，才能安全 push。',
         tips: ['仍在 Alice', '可能产生 merge 或 FF', '再看 log'],
         practice: { label: 'Alice 执行 pull', command: 'git pull' },
+        graphFocus: 'remote',
       },
       {
         id: 'push-again',
@@ -1029,6 +1082,7 @@ export const LEVELS: LevelDef[] = [
         body: '远程与 Alice 一致后，协作闭环完成。',
         tips: ['再次 push', '远程 main 与 Alice 相同', '禁止 force'],
         practice: { label: '再次 push', command: 'git push origin main' },
+        graphFocus: 'remote',
       },
     ],
     hints: ['Alice push 应失败。', 'Alice pull。', '再 push。'],
@@ -1057,7 +1111,7 @@ export const LEVELS: LevelDef[] = [
       {
         id: 'bob-commit',
         term: '1 · Bob 本地提交',
-        teaser: 'Bob 在旧 tip 上先记一笔，与远程分叉。',
+        teaser: 'Bob 在本地旧提交上先记一笔，与远程分叉。',
         body: '远程已有 Alice 的提交；Bob 本地再 commit 就会分叉，为 pull 合并做准备。',
         tips: ['顶栏 Bob', '先 commit', '此时不要直接 push'],
         practice: { label: 'Bob 创建本地提交（若尚未）', command: 'git commit -m "bob: 仅在本地"' },
@@ -1069,13 +1123,18 @@ export const LEVELS: LevelDef[] = [
         body: '与 FF 不同：双方都有独有提交时，会出现 merge commit。',
         tips: ['执行 pull', '观察新圆点两条父边', '这就是协作合并'],
         practice: { label: 'Bob 执行 pull', command: 'git pull' },
+        graphFocus: 'remote',
       },
       {
         id: 'see-both',
         term: '3 · 含双方历史',
         teaser: '从 Bob 的 main 能追溯到远程提交。',
         body: 'merge commit 同时记录两边历史。',
-        tips: ['用 log 对照', '远程 tip 可追溯', '之后可 push 分享合并结果'],
+        tips: [
+          '用 log 对照',
+          '从 Bob 的 main 应能追溯到远程最新提交',
+          '之后可 push 分享合并结果',
+        ],
         practice: { label: '查看历史', command: 'git log --oneline' },
       },
     ],
@@ -1106,14 +1165,18 @@ export const LEVELS: LevelDef[] = [
         term: '1 · 删除已合并分支',
         teaser: 'feature 已进 main，可用 -d 安全删除。',
         body: 'git branch -d 只删已合并分支，避免误删未并入的工作。',
-        tips: ['feature 与 main 同 tip 或已合并', '执行 -d', '标签从图上消失'],
+        tips: [
+          'feature 已并入 main，与 main 指向同一提交',
+          '执行 -d 删除',
+          '图上 feature 标签会消失',
+        ],
         practice: { label: '删除 feature', command: 'git branch -d feature' },
       },
       {
         id: 'del-unmerged-fail',
         term: '2 · -d 拒绝未合并',
         teaser: 'hotfix 上有未合并提交，直接 -d 会被拒绝。',
-        body: '未合并 tip 上的 -d 会失败，保护独有提交。',
+        body: '分支上还有 main 没有的提交时，直接 -d 会失败，用来保护未合并的工作。',
         tips: ['图上 hotfix 领先 main', '尝试 -d', '阅读拒绝原因'],
         practice: { label: '尝试删除未合并的 hotfix', command: 'git branch -d hotfix' },
       },
@@ -1164,13 +1227,18 @@ export const LEVELS: LevelDef[] = [
         body: 'Bob 本地有提交，远程也有新提交。先 fetch 再 rebase。',
         tips: ['顶栏 Bob', '执行 fetch', 'origin/main 前进'],
         practice: { label: 'Bob 执行 fetch', command: 'git fetch' },
+        graphFocus: 'remote',
       },
       {
         id: 'rebase-origin',
         term: '2 · rebase origin/main',
-        teaser: '把本地独有提交接到远程 tip 之上。',
+        teaser: '把本地独有提交，接到远程最新提交之上。',
         body: '协作中可用 rebase 保持线性，而不是 merge 出双父。',
-        tips: ['不要 rebase 已共享的合并结果', '目标写 origin/main', '图上应接在远程之上'],
+        tips: [
+          '只 rebase「还没推送、只有本地有」的提交；已经 push 的历史不要再改写',
+          '目标分支写 origin/main（远程跟踪分支）',
+          '完成后图上：本地提交应接在远程最新提交之上',
+        ],
         practice: { label: '变基到远程', command: 'git rebase origin/main' },
       },
       {

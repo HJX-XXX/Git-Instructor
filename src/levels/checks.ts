@@ -60,7 +60,7 @@ export function checkLevel0(
   );
 
   const dones = [
-    onFeature && ranSwitchFeature,
+    ranSwitchFeature || (onFeature && hasCommitMsg),
     ranCommitMsg && hasCommitMsg,
     hotfixExists,
   ];
@@ -68,14 +68,12 @@ export function checkLevel0(
   let feedback = '依次完成三张卡上的实操：先自己写命令，想不起来再点「显示命令」。';
   if (!featureKept) {
     feedback = '请保留图上的演示分支 feature；HEAD 目标就是切到它。可重置本关重来。';
-  } else if (!onFeature) {
+  } else if (!ranSwitchFeature && !onFeature) {
     feedback = '执行 git switch feature，把 HEAD 从 main 挪到 feature。';
-  } else if (!ranSwitchFeature) {
-    feedback = '请执行 git switch feature 确认切换到演示分支。';
-  } else if (!hotfixExists) {
-    feedback = '再创建新分支 hotfix：git branch hotfix。';
   } else if (!ranCommitMsg || !hasCommitMsg) {
-    feedback = '最后提交一条：git commit -m "这是我的提交"。';
+    feedback = '提交说明为「这是我的提交」：git commit -m "这是我的提交"。';
+  } else if (!hotfixExists) {
+    feedback = '再创建新分支 hotfix：git branch hotfix（不会切换 HEAD）。';
   }
   return result(labels, dones, feedback);
 }
@@ -117,6 +115,33 @@ export function checkLevel2(
 
 function ranOkMatch(log: LevelLogEntry[], match: (input: string) => boolean): boolean {
   return log.some((e) => e.ok && match(e.input.trim().toLowerCase()));
+}
+
+function logUserAt(
+  log: LevelLogEntry[],
+  idx: number,
+  defaultUser: 'alice' | 'bob' = 'alice',
+): 'alice' | 'bob' {
+  if (log[idx]?.user) return log[idx]!.user!;
+  let user: 'alice' | 'bob' = defaultUser;
+  for (let i = 0; i <= idx && i < log.length; i += 1) {
+    if (log[i]!.user) {
+      user = log[i]!.user!;
+      continue;
+    }
+    const m = /^user\s+(alice|bob)$/i.exec(log[i]!.input.trim());
+    if (m) user = m[1]!.toLowerCase() as 'alice' | 'bob';
+  }
+  return user;
+}
+
+function ranCmdAsUser(
+  log: LevelLogEntry[],
+  user: 'alice' | 'bob',
+  match: (input: string) => boolean,
+  defaultUser: 'alice' | 'bob' = 'alice',
+): boolean {
+  return log.some((e, i) => e.ok && match(e.input.trim().toLowerCase()) && logUserAt(log, i, defaultUser) === user);
 }
 
 function ranStatus(log: LevelLogEntry[]): boolean {
@@ -194,7 +219,7 @@ export function checkLevel3(
   return result(labels, dones, feedback);
 }
 
-/** L4：HEAD 指向 feature 并在其上提交，main 不动 */
+/** L4：HEAD 指向 feature 并在其上提交，main 不动；观察时须先 switch main 再 log */
 export function checkLevel4(
   before: WorldState,
   after: WorldState,
@@ -203,11 +228,10 @@ export function checkLevel4(
   const b = activeRepo(before);
   const a = activeRepo(after);
   const labels = [
-    'HEAD 在 feature 上',
-    'feature 上至少有 1 个 main 没有的提交',
-    'main 最新提交未变',
+    '已把 HEAD 指向 feature',
+    'feature 上有 main 没有的提交',
+    '已 switch main，并在其后执行 log 确认 main 未前进',
   ];
-  const onFeature = a.head.kind === 'branch' && a.head.name === 'feature';
   const featureTip = a.branches.feature;
   const mainTip = a.branches.main;
   const mainBefore = b.branches.main;
@@ -217,20 +241,41 @@ export function checkLevel4(
     !isAncestor(a.commits, featureTip!, mainTip!);
   const mainUnmoved = Boolean(mainBefore) && a.branches.main === mainBefore;
 
-  const didSwitch = onFeature && ranSwitchToFeature(log);
+  const didSwitch = ranSwitchToFeature(log);
   const didCommit = featureAhead && ranOkMatch(log, (t) => t.includes('commit'));
-  const didObserve = didCommit && mainUnmoved && ranLog(log);
+  const switchMainIdx = log.findIndex((e) => {
+    if (!e.ok) return false;
+    const t = e.input.trim().toLowerCase();
+    return (
+      t === 'git switch main' ||
+      t === 'switch main' ||
+      t === 'git checkout main' ||
+      t === 'checkout main'
+    );
+  });
+  const logAfterMain =
+    switchMainIdx >= 0 &&
+    log.slice(switchMainIdx + 1).some((e) => {
+      if (!e.ok) return false;
+      const t = e.input.trim().toLowerCase();
+      return /(^|\s)log(\s|$)/.test(t) || t === 'git log' || t === 'log';
+    });
+  const onMainNow = a.head.kind === 'branch' && a.head.name === 'main';
+  const didObserve = didCommit && mainUnmoved && logAfterMain;
 
   const dones = [didSwitch, didCommit, didObserve];
-  let feedback = '按卡片顺序：先把 HEAD 指向 feature，再提交，最后用 log 观察。';
+  let feedback =
+    '按卡片顺序：① switch 到 feature → ② 在 feature 上 commit → ③ switch main 之后再 log。';
   if (!didSwitch) {
-    feedback = '先让 HEAD 指向 feature（可新建并切换）。';
+    feedback = '先执行 git switch -c feature（或 switch feature），把 HEAD 指向 feature。';
   } else if (!didCommit) {
     feedback = '在 feature 上提交一笔，让它比 main 多一个点。';
   } else if (!mainUnmoved) {
-    feedback = 'main 的最新提交不应变化。可重置本关重做。';
-  } else if (!didObserve) {
-    feedback = '执行 log --oneline，观察分叉：只有 feature 前进了。';
+    feedback = 'main 的最新提交不应变化（commit 必须发生在 feature 上）。可重置本关重做。';
+  } else if (!logAfterMain) {
+    feedback = onMainNow
+      ? '已切到 main，请再执行 git log --oneline，确认 main 仍停在原提交。'
+      : '请先 git switch main，再执行 git log --oneline。在 feature 上 log 只能看到 feature 的历史。';
   }
   return result(labels, dones, feedback);
 }
@@ -378,27 +423,33 @@ export function checkLevel8(
   const aliceCommitted =
     aliceAfter.commitSeq > aliceBefore.commitSeq &&
     Object.keys(aliceAfter.commits).length > Object.keys(aliceBefore.commits).length;
+  // 起点里 Alice 本地 main 可能已领先远程（关卡预置未推送提交）
+  const aliceAheadAtStart = Boolean(
+    aliceBefore.branches.main &&
+      before.remoteBranches.main &&
+      aliceBefore.branches.main !== before.remoteBranches.main,
+  );
 
-  const ranCommit = ranOkMatch(log, (t) => t.includes('commit'));
-  const ranPush = ranOkMatch(log, (t) => t.includes('push'));
-  const ranPull = ranOkMatch(log, (t) => t.includes('pull'));
+  const ranCommitAsAlice = ranCmdAsUser(log, 'alice', (t) => t.includes('commit'));
+  const ranPushAsAlice = ranCmdAsUser(log, 'alice', (t) => t.includes('push'));
+  const ranPullAsBob = ranCmdAsUser(log, 'bob', (t) => t.includes('pull'));
 
   const dones = [
-    aliceCommitted && ranCommit,
-    remoteMoved && ranPush,
-    bobSynced && ranPull,
+    ranCommitAsAlice && (aliceCommitted || aliceAheadAtStart || remoteMoved),
+    remoteMoved && ranPushAsAlice,
+    bobSynced && ranPullAsBob,
   ];
-  let feedback = '按卡片顺序：Alice commit → Alice push → 切到 Bob 后 pull。';
-  if (!ranCommit) feedback = '先以 Alice 提交一笔（顶栏确认是 Alice）。';
-  else if (!aliceCommitted) feedback = '提交尚未记在 Alice 仓库，可重置本关重试。';
-  else if (!ranPush) feedback = '执行 push，把 Alice 的 main 发布到 origin。';
+  let feedback = '按卡片顺序：Alice commit → Alice push → 顶栏切到 Bob → Bob pull。';
+  if (!ranCommitAsAlice && !aliceAheadAtStart) feedback = '先以 Alice 提交一笔（顶栏确认是 Alice）。';
+  else if (!ranPushAsAlice) feedback = '以 Alice 执行 push，把 main 发布到 origin。';
   else if (!remoteMoved) feedback = '远程 main 还没更新。请在 Alice 下执行 git push origin main。';
-  else if (!ranPull) feedback = '顶栏切到 Bob，执行 git pull。';
-  else if (!bobSynced) feedback = 'Bob 的 main 还未与远程一致。再执行一次 git pull。';
+  else if (!ranPullAsBob) {
+    feedback = '请顶栏切到 Bob，再执行 git pull。Alice 身份下的 pull 不会同步 Bob 的仓库。';
+  } else if (!bobSynced) feedback = 'Bob 的 main 还未与远程一致。在 Bob 下再执行一次 git pull。';
   return result(labels, dones, feedback);
 }
 
-/** L9：soft 与 hard reset 对比 */
+/** L9：soft 与 hard reset 对比（含两次 status 观察） */
 export function checkLevel9(
   before: WorldState,
   after: WorldState,
@@ -409,23 +460,55 @@ export function checkLevel9(
   const labels = [
     '已查看当前提交历史',
     '已用 soft reset 回退一步',
+    'soft 后执行 git status（对照仍有改动）',
     '已用 hard reset 再回退一步',
+    'hard 后执行 git status（对照工作区干净）',
   ];
   const startTip = b.branches.main;
   const parent = startTip ? b.commits[startTip]?.parents[0] : undefined;
   const grand = parent ? b.commits[parent]?.parents[0] : undefined;
   const endTip = a.branches.main;
+
+  const isStatus = (t: string) =>
+    t === 'status' || t === 'git status' || t.endsWith(' status') || /\sstatus$/.test(t);
   const didSeeLog = ranLog(log);
-  const ranSoft = ranOkMatch(log, (t) => t.includes('reset') && t.includes('soft'));
-  const ranHard = ranOkMatch(log, (t) => t.includes('reset') && t.includes('hard'));
+  const softIdx = log.findIndex(
+    (e) => e.ok && e.input.toLowerCase().includes('reset') && e.input.toLowerCase().includes('soft'),
+  );
+  const hardIdx = log.findIndex(
+    (e) => e.ok && e.input.toLowerCase().includes('reset') && e.input.toLowerCase().includes('hard'),
+  );
+  const ranSoft = softIdx >= 0;
+  const ranHard = hardIdx >= 0;
+  const statusAfterSoft =
+    softIdx >= 0 &&
+    log
+      .slice(softIdx + 1, hardIdx >= 0 ? hardIdx : undefined)
+      .some((e) => e.ok && isStatus(e.input.trim().toLowerCase()));
+  const statusAfterHard =
+    hardIdx >= 0 && log.slice(hardIdx + 1).some((e) => e.ok && isStatus(e.input.trim().toLowerCase()));
   const hardDone = Boolean(grand) && endTip === grand && ranHard;
 
-  const dones = [didSeeLog, ranSoft, hardDone];
-  let feedback = '按卡片顺序：log → soft reset → hard reset。';
-  if (!didSeeLog) feedback = '先执行 log --oneline，看清最近两笔错误提交。';
-  else if (!ranSoft) feedback = '先执行 git reset --soft HEAD~1，只拨回指针。';
-  else if (!ranHard) feedback = '再执行 git reset --hard HEAD~1，再拨一步。';
-  else if (!hardDone) feedback = 'main 应停在错误提交之前第二笔。可重置本关重做。';
+  const dones = [didSeeLog, ranSoft, statusAfterSoft, ranHard && hardDone, statusAfterHard];
+  let feedback =
+    '按卡片顺序：log → soft → status（仍有改动）→ hard → status（干净）。';
+  if (!didSeeLog) {
+    feedback = '先执行 log --oneline，看清最近两笔错误提交和它们下面的正常提交。';
+  } else if (!ranSoft) {
+    feedback =
+      '执行 git reset --soft HEAD~1：只把 main 的指针拨回一步，改动会保留。';
+  } else if (!statusAfterSoft) {
+    feedback =
+      '请在 soft 之后、hard 之前执行 git status：应看到「工作区有未提交改动」。这一步用于对照 hard。';
+  } else if (!ranHard) {
+    feedback =
+      '执行 git reset --hard HEAD~1：再拨一步，并把工作区对齐（status 应变干净）。';
+  } else if (!hardDone) {
+    feedback = 'main 应停在两笔 oops 之前的提交。可重置本关重做。';
+  } else if (!statusAfterHard) {
+    feedback =
+      'hard 之后请再执行 git status：应看到「工作区干净」，与 soft 后的文案对比。';
+  }
   return result(labels, dones, feedback);
 }
 
@@ -501,7 +584,7 @@ export function checkLevel11(
   return result(labels, dones, feedback);
 }
 
-/** L12：fetch 只更新远程引用，再 pull 同步 */
+/** L12：fetch 只更新远程引用，再 pull 同步；须以 Bob 身份操作 */
 export function checkLevel12(
   before: WorldState,
   after: WorldState,
@@ -515,25 +598,30 @@ export function checkLevel12(
   const remoteTip = after.remoteBranches.main;
   const beforeRemote = before.remoteBranches.main;
   const remoteMoved = Boolean(remoteTip) && remoteTip !== beforeRemote;
-  const bobBeforeMain = before.users.bob.branches.main;
   const bob = after.users.bob;
-  const ranPush = ranOkMatch(log, (t) => t.includes('push'));
-  const ranFetch = ranOkMatch(log, (t) => t.includes('fetch'));
-  const ranPull = ranOkMatch(log, (t) => t.includes('pull'));
-  // fetch 后 Bob 本地 main 仍应是初始 tip；pull 后与远程一致
-  const bobStillAtStart = bob.branches.main === bobBeforeMain;
+
+  const ranPushAsAlice = ranCmdAsUser(log, 'alice', (t) => t.includes('push'));
+  const ranFetchAsBob = ranCmdAsUser(log, 'bob', (t) => t.includes('fetch'));
+  const ranPullAsBob = ranCmdAsUser(log, 'bob', (t) => t.includes('pull'));
+
   const bobSynced = Boolean(remoteTip) && bob.branches.main === remoteTip;
 
   const dones = [
-    remoteMoved && ranPush,
-    ranFetch && remoteMoved && (bobStillAtStart || bobSynced),
-    ranPull && bobSynced,
+    remoteMoved && ranPushAsAlice,
+    ranFetchAsBob && remoteMoved,
+    ranPullAsBob && bobSynced,
   ];
-  let feedback = '按卡片：Alice push → Bob fetch → Bob pull。';
-  if (!remoteMoved) feedback = '先以 Alice 提交并 push（顶栏确认 Alice）。';
-  else if (!ranFetch) feedback = '切到 Bob，先执行 git fetch，观察本地 main 未自动变化。';
-  else if (!ranPull) feedback = '再执行 git pull，把远程合入本地 main。';
-  else if (!bobSynced) feedback = 'Bob 的 main 应与远程一致。';
+  let feedback = '按卡片：Alice push → 顶栏切到 Bob → Bob fetch → Bob pull。';
+  if (!remoteMoved || !ranPushAsAlice) {
+    feedback = '先以 Alice 提交并 git push origin main（顶栏确认 Alice）。';
+  } else if (!ranFetchAsBob) {
+    feedback =
+      '请先在顶栏切换到 Bob，再执行 git fetch。Alice 身份下的 fetch 不能算 Bob 已同步远程引用。';
+  } else if (!ranPullAsBob) {
+    feedback = '仍在 Bob 身份下执行 git pull，把远程更新合入本地 main。';
+  } else if (!bobSynced) {
+    feedback = 'Bob 的 main 应与远程一致。可再执行一次 git pull。';
+  }
   return result(labels, dones, feedback);
 }
 
@@ -550,19 +638,25 @@ export function checkLevel13(
   ];
   const failedPush = log.some((e) => !e.ok && e.input.toLowerCase().includes('push'));
   const okPush = log.some((e) => e.ok && e.input.toLowerCase().includes('push'));
-  const ranPull = ranOkMatch(log, (t) => t.includes('pull'));
+  const ranPullAsAlice = ranCmdAsUser(log, 'alice', (t) => t.includes('pull'));
   const remoteTip = after.remoteBranches.main;
   const aliceTip = after.users.alice.branches.main;
   const synced = Boolean(remoteTip) && aliceTip === remoteTip;
   const aliceHasMore =
     Object.keys(after.users.alice.commits).length >
     Object.keys(before.users.alice.commits).length;
+  const aliceAheadAtStart = Boolean(
+    before.users.alice.branches.main &&
+      before.remoteBranches.main &&
+      before.users.alice.branches.main !== before.remoteBranches.main,
+  );
+  const aliceHadUnpushed = aliceHasMore || aliceAheadAtStart;
 
-  const dones = [failedPush && aliceHasMore, ranPull, okPush && synced];
+  const dones = [failedPush && aliceHadUnpushed, ranPullAsAlice, okPush && synced];
   let feedback = '按卡片：在 Alice 下 push（应失败）→ pull → 再 push。';
-  if (!aliceHasMore) feedback = '先确认 Alice 本地有未推送的提交。';
+  if (!aliceHadUnpushed) feedback = '先确认 Alice 本地相对远程有未推送的提交。';
   else if (!failedPush) feedback = '在 Alice 下执行 git push origin main，观察被拒绝。';
-  else if (!ranPull) feedback = '执行 git pull，合并远程领先提交。';
+  else if (!ranPullAsAlice) feedback = '仍在 Alice 身份下执行 git pull，合并远程领先提交。';
   else if (!okPush || !synced) feedback = 'pull 后再次 push，使远程与 Alice 一致。';
   return result(labels, dones, feedback);
 }

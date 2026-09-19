@@ -24,7 +24,7 @@ function colorForBranch(name: string, allBranches: string[]): string {
   return LANE_COLORS[(i < 0 ? 0 : i) % LANE_COLORS.length]!;
 }
 
-export type ConceptDemoFocus = 'head' | 'branch' | 'commit' | null;
+export type ConceptDemoFocus = 'head' | 'branch' | 'commit' | 'tip' | 'remote' | null;
 
 interface Props {
   state: RepoState;
@@ -56,10 +56,6 @@ function sameTipNote(state: RepoState): string | null {
   return null;
 }
 
-function truncateMsg(msg: string): string {
-  return msg.length > MSG_MAX_CHARS ? `${msg.slice(0, MSG_MAX_CHARS)}…` : msg;
-}
-
 function estimateTextWidth(s: string): number {
   let w = 0;
   for (const ch of s) {
@@ -69,6 +65,20 @@ function estimateTextWidth(s: string): number {
     else w += 7.5;
   }
   return w;
+}
+
+/** 按像素宽度截断，避免提交说明压到 HEAD/分支列 */
+function truncateMsg(msg: string, maxW: number): string {
+  const hard =
+    msg.length > MSG_MAX_CHARS ? msg.slice(0, MSG_MAX_CHARS) : msg;
+  if (maxW <= 24) return '…';
+  if (estimateTextWidth(hard) <= maxW) return hard;
+  let out = '';
+  for (const ch of hard) {
+    if (estimateTextWidth(out + ch + '…') > maxW) break;
+    out += ch;
+  }
+  return out ? `${out}…` : '…';
 }
 
 function pillWidth(label: string): number {
@@ -183,6 +193,30 @@ export function CommitGraph({
                     {Object.keys(state.branches).join('、') || '分支名'}
                   </strong>
                   ：它们是标签，不是仓库副本。在分支上 commit，该标签才会往前挪。
+                </p>
+              </>
+            )}
+            {demoFocus === 'tip' && (
+              <>
+                <span className="demo-tag">正在演示 · 提交结果</span>
+                <p>
+                  看当前分支<strong className="hl-orange">最新提交</strong>
+                  （HEAD 所指位置）与相关分支签：这是本次命令对提交图的改动。
+                </p>
+              </>
+            )}
+            {demoFocus === 'remote' && (
+              <>
+                <span className="demo-tag">正在演示 · 远程分支</span>
+                <p>
+                  看右侧<strong className="hl-blue">远程分支</strong>
+                  列的
+                  <strong className="hl-blue">
+                    {Object.keys(remoteBranches)
+                      .map((n) => `origin/${n}`)
+                      .join('、') || 'origin/*'}
+                  </strong>
+                  ：push / pull / fetch 会更新共享远程上的位置。
                 </p>
               </>
             )}
@@ -319,7 +353,11 @@ export function CommitGraph({
                 ? '#64748B'
                 : (LANE_COLORS[n.colorIndex % LANE_COLORS.length]!);
               const isNew = created.has(n.id);
-              const msg = truncateMsg(n.message);
+              // 预留 HEAD 指针列，防止说明文字与 HEAD 重叠
+              const headPillW = pillWidth('HEAD');
+              const msgColEnd = REF_X - 36 - headPillW - 20;
+              const msgMaxW = Math.max(72, msgColEnd - layout.msgX - 4);
+              const msg = truncateMsg(n.message, msgMaxW);
               const branches = nodeBranches(n);
               return (
                 <g
@@ -354,6 +392,8 @@ export function CommitGraph({
                     {isInit ? 'init' : n.id}
                   </text>
                   <text x={layout.msgX} y={n.y + 4} className={`graph-msg${isInit ? ' is-init' : ''}`}>
+                    {/* 截断时悬停显示完整提交说明 */}
+                    {msg !== n.message ? <title>{n.message}</title> : null}
                     {msg}
                   </text>
 
@@ -427,9 +467,9 @@ export function CommitGraph({
                                 width={pw}
                                 height={22}
                                 rx={11}
-                                fill="#fff"
+                                fill={`${branchColor}26`}
                                 stroke={branchColor}
-                                strokeWidth={1.6}
+                                strokeWidth={2.2}
                               />
                               <text
                                 x={x + pw / 2}
@@ -462,10 +502,10 @@ export function CommitGraph({
                           width={pw}
                           height={22}
                           rx={11}
-                          fill="#EFF6FF"
-                          stroke="#3B82F6"
-                          strokeWidth="1.6"
-                          strokeDasharray="3 2"
+                          fill="#DBEAFE"
+                          stroke="#2563EB"
+                          strokeWidth={2.2}
+                          strokeDasharray="4 2"
                         />
                         <text
                           x={x + pw / 2}
@@ -473,7 +513,7 @@ export function CommitGraph({
                           textAnchor="middle"
                           dominantBaseline="central"
                           className="ref-text"
-                          fill="#1D4ED8"
+                          fill="#1E40AF"
                         >
                           {rb}
                         </text>

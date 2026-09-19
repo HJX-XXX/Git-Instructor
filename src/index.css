@@ -156,7 +156,13 @@ code,
 }
 
 .ref-badge.is-remote rect {
-  /* dashed already set inline */
+  /* 强调远程：浅蓝底 + 深蓝描边，与本地分支区分 */
+  fill: #dbeafe;
+  stroke: #2563eb;
+}
+
+.ref-badge.is-remote .ref-text {
+  fill: #1e40af;
 }
 
 .branch-pill {
@@ -686,9 +692,9 @@ code,
 }
 
 .ref-text {
-  font-size: 11px;
+  font-size: 12px;
   font-family: Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif;
-  font-weight: 700;
+  font-weight: 800;
 }
 
 .graph-svg {
@@ -996,6 +1002,8 @@ code,
   color: var(--muted);
   padding-top: 8px;
   border-top: 1px dashed var(--border);
+  line-height: 1.6;
+  white-space: pre-line;
 }
 
 .explain-related {
@@ -1398,7 +1406,19 @@ code,
   margin: 0 0 8px;
   font-size: 12px;
   color: #374151;
-  line-height: 1.55;
+  line-height: 1.6;
+  white-space: pre-line;
+}
+
+.concept-tips-block {
+  margin: 0 0 8px;
+}
+
+.concept-tips-label {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
 }
 
 .concept-tips {
@@ -1406,7 +1426,11 @@ code,
   padding-left: 16px;
   font-size: 12px;
   color: #4b5563;
-  line-height: 1.55;
+  line-height: 1.65;
+}
+
+.concept-tips li + li {
+  margin-top: 4px;
 }
 
 .concept-practice {
@@ -1423,6 +1447,12 @@ code,
   font-weight: 600;
   color: #9a3412;
   line-height: 1.45;
+}
+
+.concept-practice-cmds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .concept-practice-cmd {
@@ -1539,14 +1569,16 @@ code,
   font-size: 14px;
   font-weight: 650;
   color: #0f172a;
-  line-height: 1.45;
+  line-height: 1.55;
+  white-space: pre-line;
 }
 
 .concept-modal-text {
   margin: 0 0 12px;
   font-size: 13.5px;
   color: #374151;
-  line-height: 1.65;
+  line-height: 1.7;
+  white-space: pre-line;
 }
 
 .concept-modal-tips {
@@ -1794,7 +1826,7 @@ code,
 }
 
 .graph-panel.demo-head .ref-badge:not(.is-current) {
-  opacity: 0.55;
+  opacity: 0.85;
 }
 
 /* HEAD：整条「HEAD 箭头 → main」一起闪 */
@@ -1828,7 +1860,7 @@ code,
 
 /* 提交：左侧圆点更明显地闪；HEAD 保持可见 */
 .graph-panel.demo-commit .ref-badge:not(.is-current) {
-  opacity: 0.58;
+  opacity: 0.85;
 }
 
 .graph-panel.demo-commit .ref-badge.is-current {
@@ -1852,6 +1884,76 @@ code,
 
 .graph-panel.demo-commit .is-head-row > rect {
   fill: #fff7ed;
+}
+
+/* 通关/卡片通过：闪当前 tip，分支签保持可读 */
+.graph-panel.demo-tip .graph-node:not(.is-head-row) {
+  opacity: 0.72;
+}
+
+.graph-panel.demo-tip .ref-badge:not(.is-current) {
+  opacity: 0.85;
+}
+
+.graph-panel.demo-tip .graph-node.is-head-row > circle:first-of-type {
+  animation: commitDotFlash 2.5s ease-in-out infinite;
+  transform-origin: center;
+  transform-box: fill-box;
+}
+
+.graph-panel.demo-tip .head-chain,
+.graph-panel.demo-tip .ref-badge.is-current {
+  animation: demoFlashGlow 2.5s ease-in-out infinite;
+}
+
+.graph-panel.demo-tip .is-head-row > rect {
+  fill: #fff7ed;
+}
+
+/* 协作命令：闪远程 origin/*；本地/远程分支颜色保持清晰 */
+.graph-panel.demo-remote .ref-badge:not(.is-remote) {
+  opacity: 0.9;
+}
+
+.graph-panel.demo-remote .graph-node:not(.is-head-row) {
+  opacity: 0.8;
+}
+
+.graph-panel.demo-remote .ref-badge.is-remote {
+  opacity: 1;
+  animation: remoteFlash 2.5s ease-in-out infinite;
+}
+
+.graph-panel.demo-remote .head-chain,
+.graph-panel.demo-remote .ref-badge.is-current {
+  opacity: 1;
+}
+
+@keyframes remoteFlash {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 0 transparent);
+  }
+  35% {
+    filter: drop-shadow(0 0 0 transparent);
+  }
+  50% {
+    filter: drop-shadow(0 0 10px rgb(37 99 235 / 0.95));
+  }
+  70% {
+    filter: drop-shadow(0 0 6px rgb(37 99 235 / 0.55));
+  }
+  85% {
+    filter: drop-shadow(0 0 2px rgb(37 99 235 / 0.35));
+  }
+}
+
+.hl-blue {
+  color: #1d4ed8;
+  background: #dbeafe;
+  border-radius: 4px;
+  padding: 0 4px;
+  font-weight: 700;
 }
 
 @keyframes headChainFlash {
@@ -1947,6 +2049,10 @@ code,
 
 .level-stage {
   margin-bottom: 10px;
+  border: 1px solid #fed7aa;
+  border-radius: 10px;
+  background: #fff7ed;
+  padding: 2px 6px 6px;
 }
 
 .level-stage-head {
@@ -1955,23 +2061,24 @@ code,
   gap: 8px;
   width: 100%;
   text-align: left;
-  margin: 8px 0 6px;
-  padding: 6px 8px;
+  margin: 6px 0 4px;
+  padding: 8px 10px;
   border-radius: 8px;
-  background: #f8fafc;
-  border: 1px solid var(--border);
+  background: #ffedd5;
+  border: 1px solid #fdba74;
+  color: #9a3412;
   cursor: pointer;
 }
 
 .level-stage-head:hover {
-  background: #f1f5f9;
+  background: #fed7aa;
 }
 
 .level-stage-chev {
   flex: 0 0 auto;
   margin-top: 2px;
   font-size: 11px;
-  color: #64748b;
+  color: #c2410c;
 }
 
 .level-stage-text {
@@ -1984,17 +2091,34 @@ code,
 .level-stage-title {
   font-size: 12px;
   font-weight: 700;
-  color: #0f172a;
+  color: #9a3412;
 }
 
 .level-stage-sum {
   font-size: 11px;
-  color: #64748b;
+  color: #c2410c;
   line-height: 1.4;
+  opacity: 0.9;
 }
 
 .level-stage.is-collapsed .level-list {
   display: none;
+}
+
+.level-stage .level-list {
+  margin-bottom: 4px;
+}
+
+/* 阶段容器内关卡小卡保持白底，与淡橙阶段头区分 */
+.level-stage .level-item {
+  background: #fff;
+  border-color: #fed7aa;
+}
+
+.level-stage .level-item.is-active {
+  border-color: #f97316;
+  background: #fff7ed;
+  box-shadow: 0 0 0 2px rgb(249 115 22 / 0.15);
 }
 
 .level-block h4 {
