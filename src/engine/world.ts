@@ -1,5 +1,5 @@
 import { applyCommand } from './apply';
-import { createConceptDemoRepo, createEmptyRepoState, createInitialDemoState } from './demo';
+import { createConceptDemoRepo, createEmptyRepoState, createInitialDemoState, createUninitializedRepoState } from './demo';
 import { headCommitId, isAncestor } from './hash';
 import { parseCommand } from './parse';
 import type {
@@ -32,6 +32,9 @@ function cloneRepoState(state: RepoState): RepoState {
         : ({ kind: 'detached', commitId: state.head.commitId } as const),
     workingFiles: [...state.workingFiles],
     dirty: state.dirty,
+    staged: state.staged,
+    stash: state.stash.map((s) => ({ ...s })),
+    initialized: state.initialized,
     commitSeq: state.commitSeq,
   };
 }
@@ -51,6 +54,35 @@ function cloneWorld(world: WorldState): WorldState {
 }
 
 export function createEmptyWorld(): WorldState {
+  return {
+    activeUser: 'alice',
+    users: {
+      alice: createUninitializedRepoState(),
+      bob: createUninitializedRepoState(),
+    },
+    remoteBranches: {},
+    remoteCommits: {},
+  };
+}
+
+/** L1：本地未 init；共享远程 origin 已有演示历史 */
+export function createCloneDemoWorld(): WorldState {
+  const base = createInitialDemoState();
+  return {
+    activeUser: 'alice',
+    users: {
+      alice: createUninitializedRepoState(),
+      bob: createUninitializedRepoState(),
+    },
+    remoteBranches: { main: base.branches.main! },
+    remoteCommits: Object.fromEntries(
+      Object.entries(base.commits).map(([k, v]) => [k, { ...v, parents: [...v.parents] }]),
+    ),
+  };
+}
+
+/** 已 init 的空世界（图上仅 git init 锚点） */
+export function createInitedEmptyWorld(): WorldState {
   return {
     activeUser: 'alice',
     users: {
@@ -171,8 +203,8 @@ function runPush(world: WorldState, branchArg?: string): WorldCommandResult {
         ],
         {
           title: '推送被拒绝（非快进）',
-          summary: `origin/${branch} 已经领先，不能直接覆盖。先 git pull 合并远程再 push。`,
-          detail: '生产环境禁止对共享分支 force push，这里也按此模拟。',
+          summary: `origin/${branch} 有你本地没有的提交，push 无法快进完成，会被拒。先 git pull 再 push。`,
+          detail: '快进 = 远程分支指针沿同一条历史前移。生产环境禁止对共享分支 force push，这里也按此模拟。',
           related: ['git pull', `git push origin ${branch}`],
         },
       );
@@ -193,7 +225,7 @@ function runPush(world: WorldState, branchArg?: string): WorldCommandResult {
     {
       title: 'push 成功',
       summary: `分支 ${branch} 已发布到 origin。切换到另一名用户后，需要 git fetch / git pull 才能看到。`,
-      detail: `远程 tip = ${localTip}。协作：push 分享 → 对方 pull 同步。`,
+      detail: `远程最新提交 = ${localTip}。协作：push 分享 → 对方 pull 同步。`,
       related: ['git fetch', 'git pull', 'git remote -v'],
     },
     { remoteRefs: [branch] },
@@ -427,7 +459,7 @@ function runRebaseWorld(
     ok: result.ok,
     world,
     stdout: [
-      `（已把 origin/${remoteName} 作为变基目标 tip ${remoteTip}）`,
+      `（已把 origin/${remoteName} 作为变基目标（最新提交 ${remoteTip}））`,
       ...result.stdout,
     ],
     explanation: {
@@ -456,6 +488,74 @@ function syncSeq(world: WorldState): void {
   world.users.bob.commitSeq = Math.max(world.users.bob.commitSeq, maxSeq);
 }
 
+/** 从共享远程复制历史到当前用户本地；远程为空则失败 */
+function runCloneWorld(w: WorldState, url?: string): WorldCommandResult {
+  const user = w.activeUser;
+  const local = w.users[user]!;
+  const tips = Object.entries(w.remoteBranches).filter(([, tip]) => Boolean(w.remoteCommits[tip]));
+  if (tips.length === 0) {
+    return failWorld(
+      w,
+      [`fatal: repository '${url ?? 'https://sandbox.local/git/teach.git'}' does not exist or is empty`],
+      {
+        title: '无法 clone',
+        summary: '远程仓库是空的，没有可复制的提交历史。',
+        detail: 'clone 的前提是远程已有内容。本关起点里 origin 已含演示历史；若远程为空会失败。',
+        related: ['git remote -v', 'git init'],
+      },
+    );
+  }
+
+  // 把远程上可达的提交全部装入本地
+  const rootTips = tips.map(([, tip]) => tip);
+  const reach: Record<string, true> = {};
+  const stack = [...rootTips];
+  while (stack.length) {
+    const id = stack.pop()!;
+    if (reach[id] || !w.remoteCommits[id]) continue;
+    reach[id] = true;
+    for (const p of w.remoteCommits[id]!.parents) stack.push(p);
+  }
+  local.commits = {};
+  for (const id of Object.keys(reach)) {
+    const c = w.remoteCommits[id]!;
+    local.commits[id] = { ...c, parents: [...c.parents] };
+  }
+  local.branches = Object.fromEntries(tips.map(([name, tip]) => [name, tip]));
+  local.head = { kind: 'branch', name: tips[0]![0] };
+  local.workingFiles = [];
+  local.dirty = false;
+  local.staged = false;
+  local.stash = [];
+  local.initialized = true;
+  local.commitSeq = Math.max(
+    local.commitSeq,
+    ...Object.values(local.commits).map((c) => c.createdAt),
+    0,
+  );
+
+  return okWorld(
+    w,
+    [
+      `Cloning into 'sandbox' from ${url ?? 'https://sandbox.local/git/teach.git'}...`,
+      `remote: 共 ${Object.keys(local.commits).length} 个提交已发送。`,
+      `done. ${local.head.kind === 'branch' ? local.head.name : 'HEAD'} → ${headCommitId(local)}`,
+    ],
+    {
+      title: 'git clone',
+      summary: `已从远程 origin 复制 ${Object.keys(local.commits).length} 个提交到本地，并建立 ${tips.map(([n]) => n).join('、')} 与 origin 跟踪。`,
+      detail: '远程本来就有历史，clone 才能成功；若远程为空会报 does not exist or is empty。',
+      related: ['git log --oneline', 'git remote -v', 'git status'],
+    },
+    {
+      createdCommits: Object.keys(local.commits),
+      movedRefs: Object.keys(local.branches),
+      newHead: true,
+      remoteRefs: tips.map(([n]) => `origin/${n}`),
+    },
+  );
+}
+
 export function applyWorldCommand(world: WorldState, input: string): WorldCommandResult {
   const trimmed = input.trim();
   const userAlias = /^user\s+(alice|bob)$/i.exec(trimmed);
@@ -481,6 +581,10 @@ export function applyWorldCommand(world: WorldState, input: string): WorldComman
   if (parsed.type === 'push') return runPush(w, parsed.branch);
   if (parsed.type === 'fetch') return runFetch(w);
   if (parsed.type === 'pull') return runPull(w, parsed.branch);
+
+  if (parsed.type === 'clone') {
+    return runCloneWorld(w, parsed.url);
+  }
 
   if (parsed.type === 'rebase') {
     return runRebaseWorld(w, parsed.target, trimmed);
@@ -540,14 +644,10 @@ export function activeRepo(world: WorldState): RepoState {
   return world.users[world.activeUser];
 }
 
-/** 本地可见的远程引用（tip 已在本地对象库） */
+/** 本地可见的远程引用 */
 export function visibleRemoteRefs(world: WorldState): Record<string, CommitId> {
-  const local = activeRepo(world);
-  const out: Record<string, CommitId> = {};
-  for (const [name, tip] of Object.entries(world.remoteBranches)) {
-    if (local.commits[tip]) out[name] = tip;
-  }
-  return out;
+  // 远程引用始终可见（未 clone 时本地可能还没有对应对象）
+  return { ...world.remoteBranches };
 }
 
 export function describeUserLine(world: WorldState): string {

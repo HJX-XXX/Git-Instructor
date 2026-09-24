@@ -22,7 +22,7 @@ export interface LevelCheckResult {
   feedback: string;
 }
 
-export type GraphFlashFocus = 'head' | 'branch' | 'commit' | 'tip' | 'remote';
+export type GraphFlashFocus = 'head' | 'branch' | 'commit' | 'latest' | 'remote';
 
 export interface LevelConcept {
   id: string;

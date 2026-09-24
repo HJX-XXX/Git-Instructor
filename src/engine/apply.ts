@@ -27,6 +27,9 @@ function cloneState(state: RepoState): RepoState {
         : { kind: 'detached', commitId: state.head.commitId },
     workingFiles: [...state.workingFiles],
     dirty: state.dirty,
+    staged: state.staged,
+    stash: state.stash.map((s) => ({ ...s })),
+    initialized: state.initialized,
     commitSeq: state.commitSeq,
   };
 }
@@ -82,8 +85,13 @@ function headLabel(state: RepoState): string {
 
 const HELP_LINES = [
   '支持的教学命令：',
+  '  git init / git clone [url]',
   '  git status',
+  '  git add [.|--all]',
   '  git commit -m "<msg>"',
+  '  git diff [--staged]',
+  '  git restore [--staged]',
+  '  git stash [pop|list]',
   '  git branch <name>',
   '  git branch -d|-D <name>',
   '  git switch <name>          （等价 checkout <name>）',
@@ -93,6 +101,7 @@ const HELP_LINES = [
   '  git merge <name>',
   '  git reset --soft|--mixed|--hard HEAD~n',
   '  git revert <hash>|HEAD',
+  '  git cherry-pick <hash>|HEAD',
   '  git rebase <branch> | origin/<branch>',
   '  git log [--oneline]',
   '  help',
@@ -121,18 +130,17 @@ function runStatus(state: RepoState): CommandResult {
     state.head.kind === 'branch'
       ? `当前分支 ${state.head.name}`
       : `HEAD 分离于 ${state.head.commitId}`;
-  const dirtyLine = state.dirty
-    ? '工作区有未提交改动（教学模拟）'
-    : '工作区干净';
-  return ok(
-    state,
-    [branch, dirtyLine, `指向提交 ${headCommitId(state) ?? '(无)'}`],
-    {
-      title: '查看状态',
-      summary: 'status 只读取当前分支与工作区摘要，不会改变提交图。',
-      related: ['git log --oneline'],
-    },
-  );
+  const lines = [branch];
+  if (state.staged) lines.push('暂存区：有已暂存改动（git add 过，尚未 commit）');
+  else lines.push('暂存区：空');
+  if (state.dirty) lines.push('工作区：有未提交改动（教学模拟）');
+  else lines.push('工作区：干净');
+  lines.push(`指向提交 ${headCommitId(state) ?? '(无)'}`);
+  return ok(state, lines, {
+    title: '查看状态',
+    summary: 'status 分区显示暂存区与工作区，并标明当前分支；只读，不改提交图。',
+    related: ['git add .', 'git diff', 'git log --oneline'],
+  });
 }
 
 function runLog(state: RepoState, oneline: boolean): CommandResult {
@@ -172,11 +180,13 @@ function runLog(state: RepoState, oneline: boolean): CommandResult {
 }
 
 function runCommit(state: RepoState, message: string): CommandResult {
+  state.initialized = true;
   const tip = headCommitId(state);
   const parents: CommitId[] = tip ? [tip] : [];
   const commit = createCommit(state, parents, message);
   const moved = setHeadTip(state, commit.id);
   state.dirty = false;
+  state.staged = false;
   const branchName = state.head.kind === 'branch' ? state.head.name : 'HEAD';
   return ok(
     state,
@@ -186,8 +196,221 @@ function runCommit(state: RepoState, message: string): CommandResult {
       summary: tip
         ? `新提交 ${commit.id} 接在 ${tip} 之后，分支 ${moved ?? 'HEAD'} 前进到它。其它分支不会动。`
         : `空仓库里出现首个提交 ${commit.id}，分支 ${moved ?? 'HEAD'} 从「尚无提交」变成指向它。`,
-      detail: '本沙箱用「提交」代表你在该分支上的改动；图上圆点变多就说明这条分支往前走了。',
-      related: ['git log --oneline', 'git status'],
+      detail:
+        '本沙箱用「提交」代表你在该分支上的改动。完整 Git 通常先 git add 进暂存区再 commit；本关若未 add 也可直接 commit（教学简化）。',
+      related: ['git add .', 'git log --oneline', 'git status'],
+    },
+    { createdCommits: [commit.id], movedRefs: moved ? [moved] : [], newHead: true },
+  );
+}
+
+function runInit(state: RepoState): CommandResult {
+  if (state.initialized) {
+    return ok(state, ['已存在 Git 仓库（沙箱已初始化）。', '图底部灰色 git init 锚点表示仓库起点。'], {
+      title: 'git init',
+      summary: '仓库已 init；图上应出现灰色锚点。',
+      detail: '再次 init 不会新建另一个仓库。',
+      related: ['git status', 'git commit -m "init: ..."'],
+    });
+  }
+  state.initialized = true;
+  state.head = { kind: 'branch', name: 'main' };
+  return ok(
+    state,
+    ['Initialized empty Git repository（沙箱模拟）', '当前尚无提交，可 git commit 创建第一个存档。'],
+    {
+      title: 'git init',
+      summary: '已在本地新建空仓库。图底部出现灰色 git init 锚点。',
+      detail: 'init 之后还没有任何提交；commit 才会留下圆点。',
+      related: ['git status', 'git clone', 'git commit -m "init: ..."'],
+    },
+  );
+}
+
+function runClone(_state: RepoState, url?: string): CommandResult {
+  // clone 依赖共享远程；在 world 层执行。本地单独 apply 不伪造历史。
+  return fail(
+    _state,
+    [`fatal: repository '${url ?? 'origin'}' not found（请在沙箱世界中 clone，且远程需有内容）`],
+    {
+      title: '无法 clone',
+      summary: 'clone 必须从有历史的远程复制；远程为空会失败。',
+      detail: '教学沙箱中 origin 若已含演示历史，执行 git clone 即可拉入。',
+      related: ['git remote -v', 'git init'],
+    },
+  );
+}
+
+function runAdd(state: RepoState): CommandResult {
+  if (!state.dirty && state.staged) {
+    return ok(state, ['已全部在暂存区'], {
+      title: 'git add',
+      summary: '没有新的工作区改动需要暂存。',
+    });
+  }
+  if (!state.dirty && !state.staged) {
+    return ok(state, ['nothing to stage（工作区无改动）'], {
+      title: 'git add',
+      summary: '把工作区改动放进暂存区（index）。当前没有可暂存的改动。',
+      detail: '沙箱用两态模拟：工作区 / 暂存区，不列出具体文件。',
+      related: ['git status', 'git diff'],
+    });
+  }
+  state.staged = true;
+  state.dirty = false;
+  return ok(state, ['已暂存当前改动（教学模拟：全部 add）'], {
+    title: 'git add',
+    summary: '改动已从工作区「放进」暂存区，等待 commit。',
+    detail: '真实 Git 可选择部分文件；沙箱用 git add . 表示全部暂存。',
+    related: ['git status', 'git diff --staged', 'git commit -m "..."'],
+  });
+}
+
+function runDiff(state: RepoState, staged: boolean): CommandResult {
+  if (staged) {
+    if (!state.staged) {
+      return ok(state, ['（暂存区无改动）'], {
+        title: 'git diff --staged',
+        summary: '查看已暂存、尚未提交的差异。',
+      });
+    }
+    return ok(state, ['（暂存区有未提交改动）'], {
+      title: 'git diff --staged',
+      summary: '暂存区有内容，commit 后才会进入历史。',
+      detail: '沙箱只显示「有/无」两态，不列出文件级 diff。',
+      related: ['git commit -m "..."', 'git restore --staged'],
+    });
+  }
+  if (!state.dirty) {
+    return ok(state, ['（工作区无改动）'], {
+      title: 'git diff',
+      summary: '查看工作区相对暂存区/上次提交的未暂存改动。',
+    });
+  }
+  return ok(state, ['（工作区有未提交改动）'], {
+    title: 'git diff',
+    summary: '工作区有尚未 add 的改动。',
+    detail: '沙箱只显示「有/无」两态，不列出文件级 diff。',
+    related: ['git add .', 'git restore .', 'git status'],
+  });
+}
+
+function runRestore(state: RepoState, staged: boolean): CommandResult {
+  if (staged) {
+    if (!state.staged) return ok(state, ['（暂存区已空）'], {
+      title: 'git restore --staged',
+      summary: '把改动从暂存区撤回工作区，不丢内容。',
+    });
+    state.staged = false;
+    state.dirty = true;
+    return ok(state, ['已从暂存区撤回工作区'], {
+      title: 'git restore --staged',
+      summary: '暂存区变空，改动仍在工作区。',
+      related: ['git status', 'git add .'],
+    });
+  }
+  if (!state.dirty) {
+    return ok(state, ['（工作区已干净）'], {
+      title: 'git restore',
+      summary: '丢弃工作区未暂存改动。',
+    });
+  }
+  state.dirty = false;
+  return ok(state, ['已丢弃工作区改动（不可恢复）'], {
+    title: 'git restore',
+    summary: '丢弃工作区未 add 的改动。',
+    detail: '危险操作：未提交且未 stash 的改动会丢失。',
+    related: ['git status', 'git stash'],
+  });
+}
+
+function runStash(state: RepoState, action: 'push' | 'pop' | 'list'): CommandResult {
+  if (action === 'list') {
+    return ok(
+      state,
+      state.stash.length ? state.stash.map((_, i) => `stash@{${i}}: WIP on branch`) : ['（stash 为空）'],
+      {
+        title: 'git stash list',
+        summary: '列出暂存起来的现场。',
+      },
+    );
+  }
+  if (action === 'push') {
+    if (!state.dirty && !state.staged) {
+      return ok(state, ['You do not have the initial commit yet'], {
+        title: 'git stash',
+        summary: '没有可保存的改动。',
+      });
+    }
+    state.stash.push({ dirty: state.dirty, staged: state.staged });
+    state.dirty = false;
+    state.staged = false;
+    return ok(state, ['Saved working directory and index state（教学模拟）'], {
+      title: 'git stash',
+      summary: '把工作区/暂存区改动收进栈，工作区变干净。',
+      detail: '之后可用 git stash pop 恢复现场。',
+      related: ['git stash list', 'git stash pop', 'git status'],
+    });
+  }
+  const top = state.stash.pop();
+  if (!top) {
+    return ok(state, ['No stash entries found'], {
+      title: 'git stash pop',
+      summary: '没有可恢复的 stash。',
+    });
+  }
+  state.dirty = state.dirty || top.dirty;
+  state.staged = state.staged || top.staged;
+  return ok(state, ['Dropped refs/stash@{0}（已恢复现场）'], {
+    title: 'git stash pop',
+    summary: '从栈顶恢复改动到工作区/暂存区。',
+    related: ['git status', 'git diff'],
+  });
+}
+
+function runCherryPick(state: RepoState, target: string): CommandResult {
+  const id = resolveCommitId(state, target);
+  if (!id) {
+    return fail(state, [`error: unknown revision '${target}'`], {
+      title: '无法 cherry-pick',
+      summary: '请使用短 hash 前缀、分支名或 HEAD（与真实 Git 一致）。',
+    });
+  }
+  const tip = headCommitId(state);
+  if (!tip) {
+    return fail(state, ['fatal: 仓库为空'], {
+      title: '无法 cherry-pick',
+      summary: '没有提交。',
+    });
+  }
+  if (id === tip) {
+    return fail(
+      state,
+      [
+        `error: 摘取目标 (${id}) 就是当前分支最新提交，cherry-pick 为空`,
+        'hint: 请摘取其它分支上的提交，例如：git cherry-pick feature',
+      ],
+      {
+        title: '无法 cherry-pick',
+        summary: '目标与当前最新提交相同，没有可复制的改动。',
+        detail: '在 main 上应摘取 feature 等其它分支的提交，例如 git cherry-pick feature。',
+        related: ['git log --oneline', 'git cherry-pick feature'],
+      },
+    );
+  }
+  const original = state.commits[id]!;
+  const commit = createCommit(state, [tip], original.message);
+  const moved = setHeadTip(state, commit.id);
+  state.dirty = false;
+  state.staged = false;
+  return ok(
+    state,
+    [`[detached? ${commit.id}] ${original.message}`, '（教学模拟：已在当前最新提交之上复制该提交）'],
+    {
+      title: 'cherry-pick 提交',
+      summary: `把「${original.message}」复制到当前分支最新提交之上，源分支指针不变。`,
+      detail: '真实 Git 会重算 hash，并可能冲突；沙箱始终成功。',
+      related: ['git log --oneline', 'git rebase main'],
     },
     { createdCommits: [commit.id], movedRefs: moved ? [moved] : [], newHead: true },
   );
@@ -407,16 +630,20 @@ function runReset(
   state.branches[state.head.name] = target;
   if (mode === 'hard') {
     state.dirty = false;
+    state.staged = false;
+  } else if (mode === 'mixed') {
+    state.staged = false;
+    if (steps > 0) state.dirty = true;
   } else if (steps > 0) {
-    // 撤销提交后，教学上标记为仍有改动待提交
-    state.dirty = true;
+    // soft：改动标记保留；若原先已暂存则仍算 staged
+    if (!state.staged) state.dirty = true;
   }
   const softHard =
     mode === 'hard'
-      ? 'hard：分支指针已拨回，工作区也强制对齐目标（未提交改动标记已清）。'
+      ? 'hard：分支指针已拨回，暂存区与工作区标记都清空。'
       : mode === 'soft'
         ? 'soft：只把分支指针拨回；暂存区/未提交改动仍保留（status 会显示仍有改动），可继续 commit。'
-        : 'mixed（默认）：分支指针已拨回；改动回到工作区、变为未提交（介于 soft 与 hard 之间）。';
+        : 'mixed（默认）：分支指针已拨回；暂存区清空，改动回到工作区（介于 soft 与 hard 之间）。';
   return ok(
     state,
     [
@@ -441,7 +668,7 @@ function runRevert(state: RepoState, target: string): CommandResult {
   if (!id) {
     return fail(state, [`error: 未知提交 '${target}'`], {
       title: '无法 revert',
-      summary: '请使用短 hash 前缀或 HEAD。',
+      summary: '请使用短 hash 前缀、分支名或 HEAD（与真实 Git 一致）。',
     });
   }
   const tip = headCommitId(state);
@@ -606,6 +833,20 @@ export function applyCommand(state: RepoState, input: string): CommandResult {
       return runRevert(next, parsed.target);
     case 'rebase':
       return runRebase(next, parsed.target);
+    case 'init':
+      return runInit(next);
+    case 'clone':
+      return runClone(next, parsed.url);
+    case 'add':
+      return runAdd(next);
+    case 'diff':
+      return runDiff(next, parsed.staged);
+    case 'restore':
+      return runRestore(next, parsed.staged);
+    case 'stash':
+      return runStash(next, parsed.action);
+    case 'cherry_pick':
+      return runCherryPick(next, parsed.target);
     default:
       return fail(next, ['error: 未实现'], explainUnknown('未实现'));
   }

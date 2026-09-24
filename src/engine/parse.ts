@@ -196,6 +196,43 @@ export function parseCommand(rawInput: string): ParsedCommand {
     return { type: 'remote_list' };
   }
 
+  if (cmd === 'init') {
+    return { type: 'init' };
+  }
+
+  if (cmd === 'clone') {
+    const names = rest.filter((a) => !a.startsWith('-'));
+    return { type: 'clone', url: names[0] };
+  }
+
+  if (cmd === 'add') {
+    const all = rest.length === 0 || rest.includes('.') || rest.includes('-A') || rest.includes('--all');
+    return { type: 'add', all };
+  }
+
+  if (cmd === 'diff') {
+    const staged = rest.includes('--staged') || rest.includes('--cached');
+    return { type: 'diff', staged };
+  }
+
+  if (cmd === 'restore') {
+    const staged = rest.includes('--staged');
+    return { type: 'restore', staged };
+  }
+
+  if (cmd === 'stash') {
+    const sub = rest.find((a) => !a.startsWith('-'));
+    if (sub === 'pop') return { type: 'stash', action: 'pop' };
+    if (sub === 'list') return { type: 'stash', action: 'list' };
+    return { type: 'stash', action: 'push' };
+  }
+
+  if (cmd === 'cherry-pick') {
+    const names = rest.filter((a) => !a.startsWith('-'));
+    const target = names[0] ?? 'HEAD';
+    return { type: 'cherry_pick', target };
+  }
+
   return {
     type: 'unknown',
     raw,

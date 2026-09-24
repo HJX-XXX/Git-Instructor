@@ -30,7 +30,7 @@ export function Onboarding({ onChoose }: Props) {
             <span className="choice-desc">
               系统学习 Git 命令行：按关卡搞清 HEAD、提交、分支、合并、回退与协作，每一步都在提交图上看到真实变化。
             </span>
-            <span className="choice-meta">导读 + 16 关 · 分 5 个阶段</span>
+            <span className="choice-meta">L1–L25 · 6 个阶段</span>
           </button>
           <button
             type="button"

@@ -22,6 +22,10 @@ export function resolveCommitId(state: RepoState, ref: string): CommitId | null 
   const lower = ref.toLowerCase();
   if (state.commits[lower]) return lower;
 
+  // 分支名 → 该分支最新提交
+  if (state.branches[ref]) return state.branches[ref]!;
+  if (state.branches[lower]) return state.branches[lower]!;
+
   const matches = Object.keys(state.commits).filter((id) => id.startsWith(lower));
   if (matches.length === 1) return matches[0]!;
   return null;
@@ -32,7 +36,7 @@ export function headCommitId(state: RepoState): CommitId | null {
   return state.branches[state.head.name] ?? null;
 }
 
-/** 是否能从 tips 集合到达 commit */
+/** 是否能从若干起点提交到达 commit */
 export function isReachable(
   commits: RepoState['commits'],
   tips: CommitId[],
@@ -62,7 +66,7 @@ export function isAncestor(
   return isReachable(commits, [descendant], ancestor);
 }
 
-/** 从 tip 回溯 n 步（0 = tip 本身） */
+/** 从最新提交回溯 n 步（0 = 本身） */
 export function walkBack(commits: RepoState['commits'], tip: CommitId, steps: number): CommitId | null {
   let cur: CommitId | null = tip;
   for (let i = 0; i < steps; i += 1) {
@@ -73,7 +77,7 @@ export function walkBack(commits: RepoState['commits'], tip: CommitId, steps: nu
   return cur;
 }
 
-/** 仅沿 first-parent 回溯可到达的 id 列表（含 tip） */
+/** 仅沿 first-parent 回溯可到达的 id 列表（含起点） */
 export function firstParentChain(commits: RepoState['commits'], tip: CommitId): CommitId[] {
   const out: CommitId[] = [];
   const seen = new Set<CommitId>();

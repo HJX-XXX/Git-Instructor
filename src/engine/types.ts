@@ -16,7 +16,14 @@ export interface RepoState {
   branches: Record<string, CommitId>;
   head: Head;
   workingFiles: string[];
+  /** 工作区是否有未提交改动（教学标记） */
   dirty: boolean;
+  /** 暂存区是否有内容（教学两态；旧关 commit 可不依赖它） */
+  staged: boolean;
+  /** stash 栈：一层即可覆盖教学 */
+  stash: { dirty: boolean; staged: boolean }[];
+  /** 是否已 init/clone；false 时提交图完全空白 */
+  initialized: boolean;
   /** 用于生成稳定短 hash 的计数器 */
   commitSeq: number;
 }
@@ -26,7 +33,7 @@ export type UserId = 'alice' | 'bob';
 export interface WorldState {
   activeUser: UserId;
   users: Record<UserId, RepoState>;
-  /** 共享远程仓库：分支名 → tip */
+  /** 共享远程仓库：分支名 → 最新提交 */
   remoteBranches: Record<string, CommitId>;
   /** 远程上的提交对象 */
   remoteCommits: Record<CommitId, Commit>;
@@ -84,4 +91,11 @@ export type ParsedCommand =
   | { type: 'fetch' }
   | { type: 'pull'; branch?: string }
   | { type: 'remote_list' }
+  | { type: 'init' }
+  | { type: 'clone'; url?: string }
+  | { type: 'add'; all: boolean }
+  | { type: 'diff'; staged: boolean }
+  | { type: 'restore'; staged: boolean }
+  | { type: 'stash'; action: 'push' | 'pop' | 'list' }
+  | { type: 'cherry_pick'; target: string }
   | { type: 'unknown'; raw: string; hint: string };

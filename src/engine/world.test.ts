@@ -87,7 +87,7 @@ describe('multi-user world', () => {
     expect(fr.world.users.bob.branches.main).toBeUndefined();
   });
 
-  it('after fetch, remote tip commits are in local store for graph', () => {
+  it('after fetch, remote commits are in local store for graph', () => {
     let w = createEmptyWorld();
     w = runAll(w, [
       'git commit -m "base"',

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { applyCommand } from './apply';
-import { createEmptyRepoState, createInitialDemoState } from './demo';
+import { createEmptyRepoState, createInitialDemoState, createUninitializedRepoState } from './demo';
 import { INIT_NODE_ID, layoutGraph } from './layout';
 import type { RepoState } from './types';
 
@@ -15,6 +15,11 @@ function runAll(state: RepoState, cmds: string[]): RepoState {
 }
 
 describe('layoutGraph', () => {
+  it('uninitialized repo has blank graph without init anchor', () => {
+    const blank = layoutGraph(createUninitializedRepoState());
+    expect(blank.nodes).toHaveLength(0);
+  });
+
   it('always includes a git init anchor', () => {
     const empty = layoutGraph(createEmptyRepoState());
     const initOnly = empty.nodes.filter((n) => n.kind === 'init');
@@ -116,7 +121,7 @@ describe('layoutGraph', () => {
     expect(layout.msgX).toBeGreaterThan(layout.idX);
   });
 
-  it('includes commits only reachable via remote tips', () => {
+  it('includes commits only reachable via remote refs', () => {
     const s = runAll(createInitialDemoState(), [
       'git switch -c feature',
       'git commit -m "f1"',

@@ -21,7 +21,229 @@ function ranOk(log: LevelLogEntry[], match: (input: string) => boolean): boolean
   return log.some((e) => e.ok && match(e.input.toLowerCase()));
 }
 
-/** L0：每张概念卡对应一条必做命令（演示图已有 feature；分支卡新建 hotfix） */
+/** L1：init 出锚点，clone 拉入远程历史 */
+export function checkLevelInitClone(
+  after: WorldState,
+  log: LevelLogEntry[],
+): LevelCheckResult {
+  const repo = activeRepo(after);
+  const labels = ['执行 git init，图上出现仓库起点', '执行 git clone，图上出现远程历史'];
+  const ranInit = ranOkMatch(log, (t) => t === 'init' || t === 'git init' || t.endsWith(' init'));
+  const ranClone = ranOkMatch(
+    log,
+    (t) => t === 'clone' || t === 'git clone' || t.startsWith('git clone') || t.startsWith('clone '),
+  );
+  const inited = repo.initialized && ranInit;
+  const cloned = ranClone && Object.keys(repo.commits).length > 0;
+  const dones = [inited, cloned];
+  let feedback = '先 git init 看灰色锚点，再 git clone 拉入远程历史。';
+  if (!ranInit) feedback = '先执行 git init，图上应出现灰色起点。';
+  else if (!repo.initialized) feedback = 'init 后仓库应处于已初始化状态。';
+  else if (!ranClone) feedback = '再执行 git clone，从远程拉入完整历史。';
+  else if (!cloned) feedback = 'clone 后图上应出现远程提交历史。';
+  return result(labels, dones, feedback);
+}
+
+/** 工作区概念关：看懂两区 */
+export function checkLevelWorkspace(
+  _before: WorldState,
+  _after: WorldState,
+  log: LevelLogEntry[],
+): LevelCheckResult {
+  const labels = [
+    '执行 status 看清工作区/暂存区',
+    '执行 git add 把改动放进暂存区',
+    '再用 status 确认暂存区有内容',
+  ];
+  const ranStatusCmd = ranStatus(log);
+  const ranAdd = ranOkMatch(log, (t) => t === 'add' || t.startsWith('git add') || t.startsWith('add '));
+  const statusAfterAdd = (() => {
+    let added = false;
+    let saw = false;
+    for (const e of log) {
+      if (!e.ok) continue;
+      const t = e.input.trim().toLowerCase();
+      if (t.includes('add')) added = true;
+      if (added && (t === 'status' || t.endsWith('status'))) saw = true;
+    }
+    return saw;
+  })();
+  const dones = [ranStatusCmd, ranAdd, ranAdd && statusAfterAdd];
+  let feedback = '按卡片：status 看两区 → add → 再 status。';
+  if (!ranStatusCmd) feedback = '先执行 git status，看清工作区与暂存区。';
+  else if (!ranAdd) feedback = '执行 git add .，把工作区改动放进暂存区。';
+  else if (!statusAfterAdd) feedback = '再执行一次 git status，确认暂存区有内容。';
+  return result(labels, dones, feedback);
+}
+
+/** add → status → commit */
+export function checkLevelAdd(
+  _before: WorldState,
+  after: WorldState,
+  log: LevelLogEntry[],
+): LevelCheckResult {
+  const repo = activeRepo(after);
+  const labels = [
+    '工作区有改动时执行 git add',
+    '用 status 看到暂存区有内容',
+    'commit 后暂存区变干净并新增提交',
+  ];
+  const ranAdd = ranOkMatch(log, (t) => t.includes('add'));
+  const ranCommit = ranOkMatch(log, (t) => t.includes('commit'));
+  const ranStatusCmd = ranStatus(log);
+  const dones = [
+    ranAdd,
+    ranAdd && ranStatusCmd,
+    ranCommit && !repo.staged && !repo.dirty,
+  ];
+  let feedback = '按卡片：add → status → commit。';
+  if (!ranAdd) feedback = '先执行 git add .。';
+  else if (!ranStatusCmd) feedback = '执行 git status，确认暂存区有内容。';
+  else if (!ranCommit) feedback = '执行 git commit 提交暂存内容。';
+  else if (repo.staged || repo.dirty) feedback = '提交后两区应干净。';
+  return result(labels, dones, feedback);
+}
+
+export function checkLevelDiff(
+  _before: WorldState,
+  _after: WorldState,
+  log: LevelLogEntry[],
+): LevelCheckResult {
+  const labels = [
+    '执行 git diff 看工作区改动',
+    '执行 git add',
+    '执行 git diff --staged 看暂存区改动',
+  ];
+  const ranDiffWork = ranOkMatch(log, (t) => t === 'diff' || t === 'git diff' || /\bdiff\b/.test(t) && !t.includes('staged') && !t.includes('cached'));
+  const ranDiffStaged = ranOkMatch(log, (t) => t.includes('diff') && (t.includes('staged') || t.includes('cached')));
+  const ranAdd = ranOkMatch(log, (t) => t.includes('add'));
+  const dones = [ranDiffWork, ranAdd && ranDiffStaged, ranDiffStaged];
+  // 对齐三卡：1 work diff 2 add 3 staged diff
+  dones[0] = ranDiffWork;
+  dones[1] = ranAdd;
+  dones[2] = ranDiffStaged;
+  let feedback = '按卡片：git diff → git add → git diff --staged。';
+  if (!ranDiffWork) feedback = '先执行 git diff，看工作区是否有改动。';
+  else if (!ranAdd) feedback = '执行 git add .，改动进入暂存区。';
+  else if (!ranDiffStaged) feedback = '执行 git diff --staged，看已暂存改动。';
+  return result(labels, dones, feedback);
+}
+
+export function checkLevelRestore(
+  _before: WorldState,
+  after: WorldState,
+  log: LevelLogEntry[],
+): LevelCheckResult {
+  const a = activeRepo(after);
+  const labels = [
+    '工作区有改动时执行 restore 丢弃',
+    '用 status 确认工作区已干净',
+    '理解 restore --staged 会把改动撤回工作区',
+  ];
+  const ranRestore = ranOkMatch(log, (t) => t.includes('restore') && !t.includes('staged'));
+  const ranRestoreStaged = ranOkMatch(log, (t) => t.includes('restore') && t.includes('staged'));
+  const ranStatusCmd = ranStatus(log);
+  const clean = !a.dirty;
+  const dones = [
+    ranRestore && clean,
+    ranRestore && clean && ranStatusCmd,
+    ranRestoreStaged,
+  ];
+  let feedback = '按卡片：restore → status →（可选）restore --staged。';
+  if (!ranRestore) feedback = '执行 git restore .，丢弃工作区改动。';
+  else if (!ranStatusCmd) feedback = '执行 git status，确认工作区已干净。';
+  else if (!ranRestoreStaged) feedback = '执行 git restore --staged，理解暂存区撤回（可在 add 后试）。';
+  return result(labels, dones, feedback);
+}
+
+export function checkLevelStash(
+  _before: WorldState,
+  after: WorldState,
+  log: LevelLogEntry[],
+): LevelCheckResult {
+  const a = activeRepo(after);
+  const labels = [
+    '执行 git stash 保存现场',
+    '工作区变干净（可查看 status）',
+    '执行 git stash pop 恢复现场',
+  ];
+  const ranStash = ranOkMatch(log, (t) => t.includes('stash') && !t.includes('pop') && !t.includes('list'));
+  const ranPop = ranOkMatch(log, (t) => t.includes('stash') && t.includes('pop'));
+  const ranStatusCmd = ranStatus(log);
+  const restored = a.dirty || a.staged;
+  const dones = [
+    ranStash,
+    ranStash && ranStatusCmd,
+    ranPop && restored,
+  ];
+  let feedback = '按卡片：stash → status → stash pop。';
+  if (!ranStash) feedback = '执行 git stash，把改动收起来。';
+  else if (!ranStatusCmd) feedback = '执行 git status，确认工作区已干净。';
+  else if (!ranPop) feedback = '执行 git stash pop，恢复现场。';
+  return result(labels, dones, feedback);
+}
+
+export function checkLevelCherryPick(
+  before: WorldState,
+  after: WorldState,
+  log: LevelLogEntry[],
+): LevelCheckResult {
+  const b = activeRepo(before);
+  const a = activeRepo(after);
+  const labels = [
+    '用 log 找到 feature 上的 bugfix 提交',
+    '只把该 bugfix cherry-pick 到 main',
+    'main 多一条 fix 提交，且不含 feat 提交',
+  ];
+  const ranLogCmd = ranLog(log);
+  const ranCp = ranOkMatch(log, (t) => t.includes('cherry-pick') || t.includes('cherry_pick'));
+  const beforeCount = Object.keys(b.commits).length;
+  const afterCount = Object.keys(a.commits).length;
+  const afterTips = [a.branches.main].filter(Boolean) as string[];
+  const tipMsgs = afterTips.map((id) => a.commits[id]?.message ?? '');
+  const hasFix = tipMsgs.some((m) => m.includes('fix'));
+  // 只检查 main 历史（不是整个对象库）：不应包含 feature 上的「开发」提交
+  const mainIds = new Set<string>();
+  const stack = afterTips.slice();
+  while (stack.length) {
+    const id = stack.pop()!;
+    if (mainIds.has(id) || !a.commits[id]) continue;
+    mainIds.add(id);
+    stack.push(...a.commits[id]!.parents);
+  }
+  const hasFeatOnMain = [...mainIds].some((id) =>
+    a.commits[id]!.message.includes('开发'),
+  );
+  // 卡片3：必须在 cherry-pick 之后再执行 log
+  let logAfterCp = false;
+  let sawCp = false;
+  for (const e of log) {
+    if (!e.ok) continue;
+    const t = e.input.trim().toLowerCase();
+    if (t.includes('cherry-pick') || t.includes('cherry_pick')) sawCp = true;
+    if (sawCp && t.includes('log')) logAfterCp = true;
+  }
+
+  const dones = [
+    ranLogCmd,
+    ranCp && afterCount > beforeCount && hasFix,
+    logAfterCp && hasFix && !hasFeatOnMain,
+  ];
+  let feedback = '按卡片：log 找到 fix → 只 cherry-pick 该 fix → 再 log 确认。';
+  if (!ranLogCmd) feedback = '先 git log --oneline，找到「fix: 紧急修复登录」的短 hash（f55adc7）。';
+  else if (!ranCp) feedback = '在 main 上执行 git cherry-pick f55adc7（不要摘「功能开发」）。';
+  else if (afterCount <= beforeCount) feedback = 'cherry-pick 后应多一条提交。';
+  else if (!hasFix) {
+    feedback = `main 最新提交应是「fix: 紧急修复登录」；当前是「${tipMsgs[0] ?? ''}」。请改摘 f55adc7。`;
+  } else if (!logAfterCp) {
+    feedback = '再执行一次 git log --oneline，确认 main 上多了一条 fix。';
+  } else if (hasFeatOnMain) {
+    feedback = '不要把「feat: 功能开发」摘进 main，只摘 fix。';
+  }
+  return result(labels, dones, feedback);
+}
+
+/** L2：HEAD / 提交 / 分支概念实操 */
 export function checkLevel0(
   after: WorldState,
   log: LevelLogEntry[],
@@ -449,7 +671,7 @@ export function checkLevel8(
   return result(labels, dones, feedback);
 }
 
-/** L9：soft 与 hard reset 对比（含两次 status 观察） */
+/** soft / mixed / hard 对比 */
 export function checkLevel9(
   before: WorldState,
   after: WorldState,
@@ -460,59 +682,69 @@ export function checkLevel9(
   const labels = [
     '已查看当前提交历史',
     '已用 soft reset 回退一步',
-    'soft 后执行 git status（对照仍有改动）',
-    '已用 hard reset 再回退一步',
-    'hard 后执行 git status（对照工作区干净）',
+    '已用 mixed reset 对比暂存区',
+    '已用 hard reset 再回退并清空两区',
   ];
   const startTip = b.branches.main;
   const parent = startTip ? b.commits[startTip]?.parents[0] : undefined;
   const grand = parent ? b.commits[parent]?.parents[0] : undefined;
+  const great = grand ? b.commits[grand]?.parents[0] : undefined;
   const endTip = a.branches.main;
-
-  const isStatus = (t: string) =>
-    t === 'status' || t === 'git status' || t.endsWith(' status') || /\sstatus$/.test(t);
   const didSeeLog = ranLog(log);
-  const softIdx = log.findIndex(
-    (e) => e.ok && e.input.toLowerCase().includes('reset') && e.input.toLowerCase().includes('soft'),
-  );
-  const hardIdx = log.findIndex(
-    (e) => e.ok && e.input.toLowerCase().includes('reset') && e.input.toLowerCase().includes('hard'),
-  );
-  const ranSoft = softIdx >= 0;
-  const ranHard = hardIdx >= 0;
-  const statusAfterSoft =
-    softIdx >= 0 &&
-    log
-      .slice(softIdx + 1, hardIdx >= 0 ? hardIdx : undefined)
-      .some((e) => e.ok && isStatus(e.input.trim().toLowerCase()));
-  const statusAfterHard =
-    hardIdx >= 0 && log.slice(hardIdx + 1).some((e) => e.ok && isStatus(e.input.trim().toLowerCase()));
-  const hardDone = Boolean(grand) && endTip === grand && ranHard;
+  const ranSoft = ranOkMatch(log, (t) => t.includes('reset') && t.includes('soft'));
+  const ranMixed = ranOkMatch(log, (t) => t.includes('reset') && t.includes('mixed'));
+  const ranHard = ranOkMatch(log, (t) => t.includes('reset') && t.includes('hard'));
+  // soft、mixed、hard 各 HEAD~1，最终应再往回 3 步
+  const hardDone = Boolean(great) && endTip === great && ranHard && !a.dirty && !a.staged;
 
-  const dones = [didSeeLog, ranSoft, statusAfterSoft, ranHard && hardDone, statusAfterHard];
-  let feedback =
-    '按卡片顺序：log → soft → status（仍有改动）→ hard → status（干净）。';
-  if (!didSeeLog) {
-    feedback = '先执行 log --oneline，看清最近两笔错误提交和它们下面的正常提交。';
-  } else if (!ranSoft) {
-    feedback =
-      '执行 git reset --soft HEAD~1：只把 main 的指针拨回一步，改动会保留。';
-  } else if (!statusAfterSoft) {
-    feedback =
-      '请在 soft 之后、hard 之前执行 git status：应看到「工作区有未提交改动」。这一步用于对照 hard。';
-  } else if (!ranHard) {
-    feedback =
-      '执行 git reset --hard HEAD~1：再拨一步，并把工作区对齐（status 应变干净）。';
-  } else if (!hardDone) {
-    feedback = 'main 应停在两笔 oops 之前的提交。可重置本关重做。';
-  } else if (!statusAfterHard) {
-    feedback =
-      'hard 之后请再执行 git status：应看到「工作区干净」，与 soft 后的文案对比。';
-  }
+  const dones = [didSeeLog, ranSoft, ranMixed, hardDone];
+  let feedback = '按卡片顺序：log → soft → mixed → hard。';
+  if (!didSeeLog) feedback = '先执行 log --oneline。';
+  else if (!ranSoft) feedback = '先执行 git reset --soft HEAD~1。';
+  else if (!ranMixed) feedback = '再执行 git reset --mixed HEAD~1，对比暂存区。';
+  else if (!ranHard) feedback = '最后执行 git reset --hard HEAD~1。';
+  else if (!hardDone) feedback = 'main 应停在更早提交且两区干净。可重置本关重做。';
   return result(labels, dones, feedback);
 }
 
-/** L10：revert 不改写历史 */
+
+/** 简单 reset，与下一关 revert 对比 */
+export function checkLevelResetSimple(
+  before: WorldState,
+  after: WorldState,
+  log: LevelLogEntry[],
+): LevelCheckResult {
+  const b = activeRepo(before);
+  const a = activeRepo(after);
+  const labels = ['用 log 看清要丢掉的提交', '用 reset 抹掉它', '用 log 确认历史里已没有它'];
+  const beforeTip = b.branches.main;
+  const parent = beforeTip ? b.commits[beforeTip]?.parents[0] : undefined;
+  const afterTip = a.branches.main;
+  const ranLog1 = ranOkMatch(log, (t) => t.includes('log'));
+  const ranReset = ranOkMatch(
+    log,
+    (t) => t.includes('reset') && (t.includes('hard') || t.includes('soft') || t.includes('mixed') || t.includes('head')),
+  );
+  const rolledBack = Boolean(parent) && afterTip === parent;
+  const tipGone = Boolean(beforeTip) && afterTip !== beforeTip && !Object.values(a.branches).includes(beforeTip!);
+  // 两次 log：reset 前与后
+  let logAfterReset = false;
+  let sawReset = false;
+  for (const e of log) {
+    if (!e.ok) continue;
+    const t = e.input.trim().toLowerCase();
+    if (t.includes('reset')) sawReset = true;
+    if (sawReset && t.includes('log')) logAfterReset = true;
+  }
+  const dones = [ranLog1 && (sawReset || log.length > 0), ranReset && rolledBack, logAfterReset && tipGone];
+  let feedback = '按卡片：log → reset 抹掉 → 再 log。';
+  if (!ranLog1) feedback = '先 git log --oneline，看清要丢掉的提交。';
+  else if (!ranReset) feedback = '执行 git reset --hard HEAD~1，抹掉最新提交。';
+  else if (!rolledBack) feedback = 'main 应退回上一提交。';
+  else if (!logAfterReset) feedback = '再执行 git log --oneline，确认那一笔已不在。';
+  return result(labels, dones, feedback);
+}
+
 export function checkLevel10(
   before: WorldState,
   after: WorldState,
@@ -547,7 +779,7 @@ export function checkLevel10(
   return result(labels, dones, feedback);
 }
 
-/** L11：rebase 把 feature 独有提交接到 main 之上 */
+/** rebase 把 feature 独有提交接到 main 之上 */
 export function checkLevel11(
   _before: WorldState,
   after: WorldState,
@@ -584,7 +816,7 @@ export function checkLevel11(
   return result(labels, dones, feedback);
 }
 
-/** L12：fetch 只更新远程引用，再 pull 同步；须以 Bob 身份操作 */
+/** fetch 只更新远程引用，再 pull 同步；须以 Bob 身份操作 */
 export function checkLevel12(
   before: WorldState,
   after: WorldState,
@@ -625,7 +857,7 @@ export function checkLevel12(
   return result(labels, dones, feedback);
 }
 
-/** L13：远程已领先时 push 被拒，pull 后再 push */
+/** 远程有本地没有的提交时 push 被拒，pull 后再 push */
 export function checkLevel13(
   before: WorldState,
   after: WorldState,
@@ -656,12 +888,12 @@ export function checkLevel13(
   let feedback = '按卡片：在 Alice 下 push（应失败）→ pull → 再 push。';
   if (!aliceHadUnpushed) feedback = '先确认 Alice 本地相对远程有未推送的提交。';
   else if (!failedPush) feedback = '在 Alice 下执行 git push origin main，观察被拒绝。';
-  else if (!ranPullAsAlice) feedback = '仍在 Alice 身份下执行 git pull，合并远程领先提交。';
+  else if (!ranPullAsAlice) feedback = '仍在 Alice 身份下执行 git pull，合并远程有而本地没有的提交。';
   else if (!okPush || !synced) feedback = 'pull 后再次 push，使远程与 Alice 一致。';
   return result(labels, dones, feedback);
 }
 
-/** L14：Bob 本地有提交时 pull 生成 merge */
+/** Bob 本地有提交时 pull 生成 merge */
 export function checkLevel14(
   _before: WorldState,
   after: WorldState,
@@ -690,12 +922,12 @@ export function checkLevel14(
   let feedback = '按卡片：Bob 先 commit → 再 pull → 观察双父节点。';
   if (!ranCommit) feedback = '切到 Bob，先创建一笔本地提交。';
   else if (!ranPull) feedback = '执行 git pull，应与远程分叉合并。';
-  else if (!isMerge) feedback = 'pull 后 main tip 应是双父提交。可重置本关重做。';
+  else if (!isMerge) feedback = 'pull 后 main 的最新提交应是双父提交。可重置本关重做。';
   else if (!containsRemote) feedback = 'merge 结果应能追溯到远程提交。';
   return result(labels, dones, feedback);
 }
 
-/** L15：分支 -d / -D 删除 */
+/** 分支 -d / -D 删除 */
 export function checkLevel15(
   _before: WorldState,
   after: WorldState,
@@ -739,7 +971,7 @@ export function checkLevel15(
   return result(labels, dones, feedback);
 }
 
-/** L16：fetch 后把本地提交 rebase 到 origin/main */
+/** fetch 后把本地提交 rebase 到 origin/main */
 export function checkLevel16(
   _before: WorldState,
   after: WorldState,

@@ -11,7 +11,8 @@ export interface LayoutNode {
   /** origin/xxx 远程跟踪引用 */
   remoteBranches: string[];
   isHead: boolean;
-  colorIndex: number;
+  /** 该节点所在链的所属分支名；与分支签同色 */
+  colorBranch: string | null;
   /** init = 时间轴底部的 git init 锚点；缺省为真实提交 */
   kind?: 'commit' | 'init';
 }
@@ -30,6 +31,8 @@ export interface GraphLayout {
   laneCount: number;
   /** 每条 lane 的 x 坐标，便于画竖轨 */
   laneX: number[];
+  /** 每条 lane 的所属分支名（与 laneX 对齐），供竖轨与分支签同色 */
+  laneBranches: (string | null)[];
   /** hash 列右对齐 x（提交编号结束位置） */
   idX: number;
   /** 提交说明列起始 x */
@@ -69,39 +72,64 @@ function textColumnsForLanes(laneCount: number): { idX: number; msgX: number } {
 
 function reachableSet(
   state: RepoState,
-  remoteBranches: Record<string, CommitId> = {},
+  _remoteBranches: Record<string, CommitId> = {},
+  _remoteCommits: Record<string, import('./types').Commit> = {},
 ): Set<CommitId> {
+  // 只绘制本地已有提交；远程最新提交的对象进本地后再连出
+  const store = (id: CommitId) => state.commits[id];
   const tips: CommitId[] = [
     ...Object.values(state.branches),
     ...(headCommitId(state) ? [headCommitId(state)!] : []),
-    // 已 fetch 到本地的远程 tip 也要画出来
-    ...Object.values(remoteBranches).filter((id) => state.commits[id]),
+    ...Object.values(_remoteBranches).filter((id) => state.commits[id]),
   ];
   const seen = new Set<CommitId>();
   const stack = [...tips];
   while (stack.length > 0) {
     const id = stack.pop()!;
-    if (seen.has(id) || !state.commits[id]) continue;
+    if (seen.has(id)) continue;
+    const c = store(id);
+    if (!c) continue;
     seen.add(id);
-    for (const p of state.commits[id]!.parents) stack.push(p);
+    for (const p of c.parents) stack.push(p);
   }
   return seen;
 }
 
 /**
- * 新提交在上。lane 按分支 tip 的 first-parent 链分配；
+ * 新提交在上。泳道按分支最新提交的 first-parent 链分配；
  * 消息统一排在图右侧固定区域，避免和节点挤在一起。
  */
 export function layoutGraph(
   state: RepoState,
   remoteBranches: Record<string, CommitId> = {},
+  remoteCommits: Record<string, import('./types').Commit> = {},
 ): GraphLayout {
-  const reach = reachableSet(state, remoteBranches);
+  const store = (id: CommitId) => state.commits[id];
+  // 未 init 且本地无提交：图主体空白（远程列由 UI 单独绘制）
+  const hasLocalContent =
+    state.initialized ||
+    Object.keys(state.commits).length > 0 ||
+    Object.keys(state.branches).length > 0;
+  if (!hasLocalContent) {
+    const { idX, msgX } = textColumnsForLanes(1);
+    return {
+      nodes: [],
+      edges: [],
+      width: ORIGIN_REF_X + 240,
+      height: 160,
+      laneCount: 1,
+      laneX: [RAIL_X],
+      laneBranches: [null],
+      idX,
+      msgX,
+    };
+  }
+  const reach = reachableSet(state, remoteBranches, remoteCommits);
   const ids = Object.keys(state.commits)
-    .filter((id) => reach.has(id) && state.commits[id])
+    .filter((id) => reach.has(id) && store(id))
     .sort((a, b) => {
-      const ca = state.commits[a]!;
-      const cb = state.commits[b]!;
+      const ca = store(a)!;
+      const cb = store(b)!;
       return cb.createdAt - ca.createdAt || a.localeCompare(b);
     });
 
@@ -111,7 +139,8 @@ export function layoutGraph(
   });
 
   const laneOf = new Map<CommitId, number>();
-  const colorOf = new Map<CommitId, number>();
+  const colorBranchOf = new Map<CommitId, string | null>();
+  const laneBranches: (string | null)[] = [];
   let nextLane = 0;
 
   // 分支泳道固定优先级：main/master 在最左，其余按名称；不因 HEAD 切换而整体换道
@@ -123,33 +152,44 @@ export function layoutGraph(
     return a.localeCompare(b);
   });
 
-  const orderedTips: CommitId[] = [];
-  for (const name of branchNames) {
-    orderedTips.push(state.branches[name]!);
-  }
-  const headTip = headCommitId(state);
-  if (headTip && !orderedTips.includes(headTip)) orderedTips.push(headTip);
-
-  for (const tip of orderedTips) {
+  // 按 first-parent 链铺道；链上已有节点则不新开道，避免共享 tip 空占泳道
+  const claimChain = (tip: CommitId, branch: string | null) => {
     let cur: CommitId | null = tip;
     const lane = nextLane;
+    let assigned = false;
     const seen = new Set<CommitId>();
-    while (cur && state.commits[cur] && !seen.has(cur)) {
+    while (cur && store(cur) && !seen.has(cur)) {
       seen.add(cur);
       if (!laneOf.has(cur)) {
         laneOf.set(cur, lane);
-        colorOf.set(cur, lane);
+        colorBranchOf.set(cur, branch);
+        assigned = true;
       }
-      const parents: CommitId[] = state.commits[cur]!.parents;
-      cur = parents[0] ?? null;
+      cur = store(cur)!.parents[0] ?? null;
     }
-    nextLane += 1;
+    if (assigned) {
+      laneBranches[lane] = branch;
+      nextLane += 1;
+    }
+  };
+
+  for (const name of branchNames) {
+    claimChain(state.branches[name]!, name);
+  }
+  const headTip = headCommitId(state);
+  if (headTip && !colorBranchOf.has(headTip)) {
+    claimChain(headTip, state.head.kind === 'branch' ? state.head.name : null);
+  }
+  // 远程跟踪链：归属到同名远程分支，便于 origin/* 与线色一致
+  for (const [name, tip] of Object.entries(remoteBranches)) {
+    if (store(tip) && !colorBranchOf.has(tip)) claimChain(tip, name);
   }
 
   for (const id of ids) {
     if (!laneOf.has(id)) {
       laneOf.set(id, nextLane);
-      colorOf.set(id, nextLane);
+      colorBranchOf.set(id, null);
+      laneBranches[nextLane] = null;
       nextLane += 1;
     }
   }
@@ -161,19 +201,23 @@ export function layoutGraph(
   }
 
   const nodes: LayoutNode[] = ids.map((id) => {
-    const c = state.commits[id]!;
+    const c = store(id)!;
+    const inLocal = Boolean(state.commits[id]);
     const lane = laneOf.get(id) ?? 0;
     const branches: string[] = [];
-    for (const name of Object.keys(state.branches)) {
-      if (state.branches[name] === id) branches.push(name);
+    if (inLocal) {
+      for (const name of Object.keys(state.branches)) {
+        if (state.branches[name] === id) branches.push(name);
+      }
     }
     const remoteList: string[] = [];
     for (const [name, tip] of Object.entries(remoteBranches)) {
-      if (tip === id && state.commits[id]) remoteList.push(`origin/${name}`);
+      if (tip === id) remoteList.push(`origin/${name}`);
     }
     const isHead =
-      (state.head.kind === 'detached' && state.head.commitId === id) ||
-      (state.head.kind === 'branch' && state.branches[state.head.name] === id);
+      inLocal &&
+      ((state.head.kind === 'detached' && state.head.commitId === id) ||
+        (state.head.kind === 'branch' && state.branches[state.head.name] === id));
     return {
       id,
       lane,
@@ -183,21 +227,23 @@ export function layoutGraph(
       branches,
       remoteBranches: remoteList,
       isHead,
-      colorIndex: colorOf.get(id) ?? 0,
+      colorBranch: colorBranchOf.get(id) ?? null,
     };
   });
 
   const edges: LayoutEdge[] = [];
   for (const id of ids) {
-    const c = state.commits[id]!;
+    const c = store(id)!;
     c.parents.forEach((p, idx) => {
       if (!yOf.has(p)) return;
       edges.push({ from: id, to: p, kind: idx === 0 ? 'first' : 'merge' });
     });
   }
 
-  // 原生 git init 锚点：始终在时间轴最下端
+  // 原生 git init 锚点：已 init 或已有提交（clone）时出现在时间轴最下端
   const hasCommits = ids.length > 0;
+  const showInitAnchor = state.initialized || hasCommits || Object.keys(remoteCommits).length > 0;
+  if (showInitAnchor) {
   const initY = hasCommits ? PAD_TOP + ids.length * NODE_GAP_Y : PAD_TOP;
   const unbornBranch =
     !hasCommits && state.head.kind === 'branch' ? state.head.name : null;
@@ -210,15 +256,17 @@ export function layoutGraph(
     branches: unbornBranch ? [unbornBranch] : [],
     remoteBranches: [],
     isHead: !hasCommits,
-    colorIndex: 0,
+    colorBranch: unbornBranch,
     kind: 'init',
   };
   nodes.push(initNode);
 
   for (const id of ids) {
-    if ((state.commits[id]?.parents.length ?? 0) === 0) {
+    const c = store(id);
+    if (c && c.parents.length === 0) {
       edges.push({ from: id, to: INIT_NODE_ID, kind: 'init' });
     }
+  }
   }
 
   const maxY = nodes.reduce((m, n) => Math.max(m, n.y), 0);
@@ -231,6 +279,7 @@ export function layoutGraph(
     height: maxY + PAD_BOTTOM,
     laneCount,
     laneX,
+    laneBranches,
     idX,
     msgX,
   };

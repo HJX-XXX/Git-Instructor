@@ -1,6 +1,21 @@
 import type { RepoState } from './types';
 
-/** 空白仓库：类似 git init，main 尚无提交 */
+/** 未 init 的空白工作区：提交图完全为空 */
+export function createUninitializedRepoState(): RepoState {
+  return {
+    commits: {},
+    branches: {},
+    head: { kind: 'branch', name: 'main' },
+    workingFiles: [],
+    dirty: false,
+    staged: false,
+    stash: [],
+    initialized: false,
+    commitSeq: 0,
+  };
+}
+
+/** 已 init 的空仓库：main 尚无提交，图上只有 git init 锚点 */
 export function createEmptyRepoState(): RepoState {
   return {
     commits: {},
@@ -8,6 +23,9 @@ export function createEmptyRepoState(): RepoState {
     head: { kind: 'branch', name: 'main' },
     workingFiles: [],
     dirty: false,
+    staged: false,
+    stash: [],
+    initialized: true,
     commitSeq: 0,
   };
 }
@@ -41,6 +59,9 @@ export function createInitialDemoState(): RepoState {
     head: { kind: 'branch', name: 'main' },
     workingFiles: ['README.md', 'src/App.tsx'],
     dirty: false,
+    staged: false,
+    stash: [],
+    initialized: true,
     commitSeq: 3,
   };
 }
@@ -81,6 +102,9 @@ export function createConceptDemoRepo(): RepoState {
     head: { kind: 'branch', name: 'main' },
     workingFiles: [],
     dirty: false,
+    staged: false,
+    stash: [],
+    initialized: true,
     commitSeq: 4,
   };
 }

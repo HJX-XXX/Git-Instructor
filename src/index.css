@@ -1886,27 +1886,27 @@ code,
   fill: #fff7ed;
 }
 
-/* 通关/卡片通过：闪当前 tip，分支签保持可读 */
-.graph-panel.demo-tip .graph-node:not(.is-head-row) {
+/* 通关/卡片通过：闪最新提交圆点，分支签保持可读 */
+.graph-panel.demo-latest .graph-node:not(.is-head-row) {
   opacity: 0.72;
 }
 
-.graph-panel.demo-tip .ref-badge:not(.is-current) {
+.graph-panel.demo-latest .ref-badge:not(.is-current) {
   opacity: 0.85;
 }
 
-.graph-panel.demo-tip .graph-node.is-head-row > circle:first-of-type {
+.graph-panel.demo-latest .graph-node.is-head-row > circle:first-of-type {
   animation: commitDotFlash 2.5s ease-in-out infinite;
   transform-origin: center;
   transform-box: fill-box;
 }
 
-.graph-panel.demo-tip .head-chain,
-.graph-panel.demo-tip .ref-badge.is-current {
+.graph-panel.demo-latest .head-chain,
+.graph-panel.demo-latest .ref-badge.is-current {
   animation: demoFlashGlow 2.5s ease-in-out infinite;
 }
 
-.graph-panel.demo-tip .is-head-row > rect {
+.graph-panel.demo-latest .is-head-row > rect {
   fill: #fff7ed;
 }
 

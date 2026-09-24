@@ -11,24 +11,23 @@ import {
 
 const LANE_COLORS = ['#16A34A', '#7C3AED', '#2563EB', '#D97706', '#DB2777', '#0D9488'];
 
-/** 分支名 → 稳定配色（与当前 tip 所在泳道无关，避免新建分支仍显示 main 的绿色） */
-function colorForBranch(name: string, allBranches: string[]): string {
-  const names = [...allBranches].sort((a, b) => {
-    const rank = (n: string) => (n === 'main' || n === 'master' ? 0 : 1);
-    const ra = rank(a);
-    const rb = rank(b);
-    if (ra !== rb) return ra - rb;
-    return a.localeCompare(b);
-  });
-  const i = names.indexOf(name);
-  return LANE_COLORS[(i < 0 ? 0 : i) % LANE_COLORS.length]!;
+/** 分支名 → 稳定配色：只依赖名字，删/建其他分支不会导致换色 */
+export function colorForBranch(name: string): string {
+  if (name === 'main' || name === 'master') return LANE_COLORS[0]!;
+  let h = 0;
+  for (let i = 0; i < name.length; i++) {
+    h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  }
+  // 绿色留给 main，其余分支在剩余色中取
+  return LANE_COLORS[1 + (h % (LANE_COLORS.length - 1))]!;
 }
 
-export type ConceptDemoFocus = 'head' | 'branch' | 'commit' | 'tip' | 'remote' | null;
+export type ConceptDemoFocus = 'head' | 'branch' | 'commit' | 'latest' | 'remote' | null;
 
 interface Props {
   state: RepoState;
   remoteBranches?: Record<string, string>;
+  remoteCommits?: Record<string, { id: string; parents: string[]; message: string; createdAt: number }>;
   userLabel?: string;
   highlights?: Highlights;
   onFill?: (cmd: string) => void;
@@ -88,12 +87,16 @@ function pillWidth(label: string): number {
 export function CommitGraph({
   state,
   remoteBranches = {},
+  remoteCommits = {},
   userLabel,
   highlights,
   onFill,
   demoFocus = null,
 }: Props) {
-  const layout = useMemo(() => layoutGraph(state, remoteBranches), [state, remoteBranches]);
+  const layout = useMemo(
+    () => layoutGraph(state, remoteBranches, remoteCommits),
+    [state, remoteBranches, remoteCommits],
+  );
   const created = new Set(highlights?.createdCommits ?? []);
   const moved = new Set(highlights?.movedRefs ?? []);
   const commitNodes = layout.nodes.filter((n) => n.kind !== 'init');
@@ -161,69 +164,6 @@ export function CommitGraph({
         </div>
       </div>
 
-      {demoFocus && (
-        <div className="graph-demo-bar" role="status" key={demoFocus}>
-          <span className="demo-pulse" aria-hidden />
-          <div className="demo-bar-text">
-            {demoFocus === 'head' && (
-              <>
-                <span className="demo-tag">正在演示 · HEAD</span>
-                <p>
-                  只看<strong className="hl-orange">橙色箭头 HEAD → main</strong>
-                  ：HEAD 是指针，指向当前分支 main。
-                </p>
-              </>
-            )}
-            {demoFocus === 'commit' && (
-              <>
-                <span className="demo-tag">正在演示 · 提交</span>
-                <p>
-                  看左侧<strong className="hl-green">闪烁的圆点</strong>
-                  与卡片文案：每个圆点是一次 commit。
-                </p>
-              </>
-            )}
-            {demoFocus === 'branch' && (
-              <>
-                <span className="demo-tag">正在演示 · 分支</span>
-                <p>
-                  看右侧<strong className="hl-green">本地分支</strong>
-                  列的
-                  <strong className="hl-green">
-                    {Object.keys(state.branches).join('、') || '分支名'}
-                  </strong>
-                  ：它们是标签，不是仓库副本。在分支上 commit，该标签才会往前挪。
-                </p>
-              </>
-            )}
-            {demoFocus === 'tip' && (
-              <>
-                <span className="demo-tag">正在演示 · 提交结果</span>
-                <p>
-                  看当前分支<strong className="hl-orange">最新提交</strong>
-                  （HEAD 所指位置）与相关分支签：这是本次命令对提交图的改动。
-                </p>
-              </>
-            )}
-            {demoFocus === 'remote' && (
-              <>
-                <span className="demo-tag">正在演示 · 远程分支</span>
-                <p>
-                  看右侧<strong className="hl-blue">远程分支</strong>
-                  列的
-                  <strong className="hl-blue">
-                    {Object.keys(remoteBranches)
-                      .map((n) => `origin/${n}`)
-                      .join('、') || 'origin/*'}
-                  </strong>
-                  ：push / pull / fetch 会更新共享远程上的位置。
-                </p>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
       {note && <div className="graph-note">{note}</div>}
 
       <div className="graph-wrap" aria-label="提交图">
@@ -278,80 +218,15 @@ export function CommitGraph({
               </text>
             </g>
 
-            {layout.laneX.map((x, i) => (
-              <line
-                key={`rail-${i}`}
-                x1={x}
-                y1={36}
-                x2={x}
-                y2={Math.max(80, height - 24)}
-                stroke={LANE_COLORS[i % LANE_COLORS.length]!}
-                strokeWidth={2}
-                opacity={0.28}
-              />
-            ))}
-
-            <defs>
-              <marker id="arrow" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto">
-                <path d="M0,0 L6.5,3 L0,6" fill="none" stroke="#94A3B8" strokeWidth="1.2" />
-              </marker>
-              <marker
-                id="arrow-merge"
-                markerWidth="8"
-                markerHeight="8"
-                refX="6.5"
-                refY="3"
-                orient="auto"
-              >
-                <path d="M0,0 L6.5,3 L0,6" fill="none" stroke="#64748B" strokeWidth="1.2" />
-              </marker>
-              <marker
-                id="arrow-head"
-                markerWidth="7"
-                markerHeight="7"
-                refX="5.5"
-                refY="2.5"
-                orient="auto"
-              >
-                <path d="M0,0 L5.5,2.5 L0,5" fill="none" stroke="#FB923C" strokeWidth="1.3" />
-              </marker>
-            </defs>
-
-            {layout.edges.map((e) => {
-              const a = nodeById.get(e.from);
-              const b = nodeById.get(e.to);
-              if (!a || !b) return null;
-              const midY = (a.y + b.y) / 2;
-              const color =
-                e.kind === 'init'
-                  ? '#94A3B8'
-                  : e.kind === 'merge'
-                    ? '#64748B'
-                    : (LANE_COLORS[a.colorIndex % LANE_COLORS.length] ?? '#94A3B8');
-              const d =
-                a.lane === b.lane
-                  ? `M ${a.x} ${a.y + 10} L ${b.x} ${b.y - 10}`
-                  : `M ${a.x} ${a.y + 10} C ${a.x} ${midY}, ${b.x} ${midY}, ${b.x} ${b.y - 10}`;
-              const dashed = e.kind === 'merge' || e.kind === 'init';
-              return (
-                <path
-                  key={`${e.from}-${e.to}`}
-                  d={d}
-                  fill="none"
-                  stroke={color}
-                  strokeWidth={e.kind === 'init' ? 1.4 : e.kind === 'merge' ? 1.5 : 2.2}
-                  strokeDasharray={dashed ? '5 4' : undefined}
-                  markerEnd={e.kind === 'first' ? 'url(#arrow)' : 'url(#arrow-merge)'}
-                  opacity={e.kind === 'init' ? 0.7 : e.kind === 'merge' ? 0.85 : 0.95}
-                />
-              );
-            })}
 
             {layout.nodes.map((n) => {
               const isInit = n.kind === 'init' || n.id === INIT_NODE_ID;
+              // 提交点/连线与分支签共用 colorForBranch，颜色一一对应
               const color = isInit
                 ? '#64748B'
-                : (LANE_COLORS[n.colorIndex % LANE_COLORS.length]!);
+                : n.colorBranch
+                  ? colorForBranch(n.colorBranch)
+                  : '#94A3B8';
               const isNew = created.has(n.id);
               // 预留 HEAD 指针列，防止说明文字与 HEAD 重叠
               const headPillW = pillWidth('HEAD');
@@ -370,7 +245,7 @@ export function CommitGraph({
                   <rect
                     x={n.x - 10}
                     y={n.y - 14}
-                    width={width - n.x}
+                    width={Math.max(80, ORIGIN_REF_X - 24 - (n.x - 10))}
                     height={28}
                     rx={6}
                     fill={n.isHead ? '#FFF7ED' : 'transparent'}
@@ -409,7 +284,7 @@ export function CommitGraph({
                     }
                     return list.map((b, i) => {
                       const label = b.name;
-                      const branchColor = colorForBranch(label, Object.keys(state.branches));
+                      const branchColor = colorForBranch(label);
                       const pw = pillWidth(label);
                       const x = REF_X;
                       const py2 = n.y - 11 + i * 26;
@@ -523,6 +398,118 @@ export function CommitGraph({
                 </g>
               );
             })}
+
+            {layout.laneX.map((x, i) => (
+              <line
+                key={`rail-${i}`}
+                x1={x}
+                y1={36}
+                x2={x}
+                y2={Math.max(80, height - 24)}
+                stroke={
+                  layout.laneBranches[i] != null
+                    ? colorForBranch(layout.laneBranches[i]!)
+                    : '#94A3B8'
+                }
+                strokeWidth={2}
+                opacity={0.28}
+              />
+            ))}
+
+            <defs>
+              <marker id="arrow" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto">
+                <path d="M0,0 L6.5,3 L0,6" fill="none" stroke="#94A3B8" strokeWidth="1.2" />
+              </marker>
+              <marker
+                id="arrow-merge"
+                markerWidth="8"
+                markerHeight="8"
+                refX="6.5"
+                refY="3"
+                orient="auto"
+              >
+                <path d="M0,0 L6.5,3 L0,6" fill="none" stroke="#64748B" strokeWidth="1.2" />
+              </marker>
+              <marker
+                id="arrow-head"
+                markerWidth="7"
+                markerHeight="7"
+                refX="5.5"
+                refY="2.5"
+                orient="auto"
+              >
+                <path d="M0,0 L5.5,2.5 L0,5" fill="none" stroke="#FB923C" strokeWidth="1.3" />
+              </marker>
+            </defs>
+
+            {layout.edges.map((e) => {
+              const a = nodeById.get(e.from);
+              const b = nodeById.get(e.to);
+              if (!a || !b) return null;
+              const midY = (a.y + b.y) / 2;
+              const color =
+                e.kind === 'init'
+                  ? '#94A3B8'
+                  : e.kind === 'merge'
+                    ? '#64748B'
+                    : a.colorBranch
+                      ? colorForBranch(a.colorBranch)
+                      : '#94A3B8';
+              const d =
+                a.lane === b.lane
+                  ? `M ${a.x} ${a.y + 10} L ${b.x} ${b.y - 10}`
+                  : `M ${a.x} ${a.y + 10} C ${a.x} ${midY}, ${b.x} ${midY}, ${b.x} ${b.y - 10}`;
+              const dashed = e.kind === 'merge' || e.kind === 'init';
+              return (
+                <path
+                  key={`${e.from}-${e.to}`}
+                  d={d}
+                  fill="none"
+                  stroke={color}
+                  strokeWidth={e.kind === 'init' ? 1.4 : e.kind === 'merge' ? 1.5 : 2.2}
+                  strokeDasharray={dashed ? '5 4' : undefined}
+                  markerEnd={e.kind === 'first' ? 'url(#arrow)' : 'url(#arrow-merge)'}
+                  opacity={e.kind === 'init' ? 0.7 : e.kind === 'merge' ? 0.85 : 0.95}
+                />
+              );
+            })}
+            {/* 远程引用置顶，避免被 HEAD 行底色盖住 */}
+            {Object.keys(remoteBranches)
+              .filter((name) => {
+                const label = `origin/${name}`;
+                return !layout.nodes.some((n) => n.remoteBranches.includes(label));
+              })
+              .map((name, i) => {
+                const label = `origin/${name}`;
+                const pw = pillWidth(label);
+                const y = 56 + i * 28;
+                return (
+                  <g key={`remote-top-${name}`} className="ref-badge is-remote">
+                    <title>{`共享远程 ${label}`}</title>
+                    <rect
+                      x={ORIGIN_REF_X}
+                      y={y}
+                      width={pw}
+                      height={22}
+                      rx={11}
+                      fill="#EFF6FF"
+                      stroke="#3B82F6"
+                      strokeWidth="1.6"
+                      strokeDasharray="3 2"
+                    />
+                    <text
+                      x={ORIGIN_REF_X + pw / 2}
+                      y={y + 11}
+                      textAnchor="middle"
+                      dominantBaseline="central"
+                      className="ref-text"
+                      fill="#1D4ED8"
+                    >
+                      {label}
+                    </text>
+                  </g>
+                );
+              })}
           </svg>
       </div>
 

@@ -30,3 +30,7 @@ npm run dev
 
 - 产品文档：`docs/product/PRD.md`
 - 实现规格：`docs/compose/spec/git-viz-mvp.md`
+
+## 许可证
+
+本项目采用 [MIT License](LICENSE) 开源。你可以自由使用、修改、分发和商用，只需保留版权与许可声明。

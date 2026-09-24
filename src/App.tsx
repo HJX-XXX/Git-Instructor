@@ -5,6 +5,7 @@ import {
   applyWorldCommand,
   createEmptyWorld,
   createDemoWorld,
+  createInitedEmptyWorld,
   switchUser,
   USER_META,
   visibleRemoteRefs,
@@ -13,7 +14,6 @@ import { getLevel, LEVELS } from './levels/catalog';
 import {
   loadProgress,
   markCompleted,
-  nextLevelId,
   saveProgress,
   withProfile,
 } from './levels/progress';
@@ -79,7 +79,7 @@ function bootTerm(profile: SkillProfile | null, levelId: number): Record<UserId,
 }
 
 function levelBootExplanation(lv: LevelDef): Explanation {
-  const title = lv.id === 0 ? `导读 · ${lv.title}` : `第 ${lv.id} 关 · ${lv.title}`;
+  const title = `第 ${lv.id} 关 · ${lv.title}`;
   if (lv.intro) {
     return {
       title,
@@ -152,7 +152,7 @@ function resolveGraphFocus(level: LevelDef, index: number): GraphFlashFocus | nu
     cmd.includes('-d') ||
     cmd.includes('-D')
   ) {
-    return 'tip';
+    return 'latest';
   }
   return null;
 }
@@ -244,7 +244,7 @@ export default function App() {
   const enterFree = useCallback(() => {
     setMode('free');
     // 切到自由练习时清空提交图，避免残留关卡演示状态
-    setWorld(createEmptyWorld());
+    setWorld(createInitedEmptyWorld());
     setLevelStartWorld(null);
     setTermByUser(emptyHist());
     setHistoryByUser(emptyHistories());
@@ -328,8 +328,8 @@ export default function App() {
           readConcepts,
         });
         setCheckResult(check);
-        // 非 L0：卡片目标达成且提交图有变化时，保持 L0 同款持续演示（闪烁 + 橙色条）
-        if (level.id !== 0) {
+        // 卡片目标达成且提交图有变化时，闪烁对应目标（若已配置 graphFocus）
+        {
           const graphChanged = graphSignature(before) !== graphSignature(result.world);
           const prevDone = prevObjectivesDone.current;
           const newlyDoneIdx = check.objectives.findIndex(
@@ -339,12 +339,9 @@ export default function App() {
           if (graphChanged && newlyDoneIdx >= 0) {
             const focus = resolveGraphFocus(level, newlyDoneIdx);
             if (focus) {
-              // 不自动停止，保持一直闪烁与提示条
               setCardFlash(focus);
             }
           }
-        } else {
-          prevObjectivesDone.current = check.objectives.map((o) => o.done);
         }
         if (check.win && !wonRef.current) {
           wonRef.current = true;
@@ -357,9 +354,7 @@ export default function App() {
           appendTerm(fromUser, [
             {
               text:
-                level.id === 0
-                  ? `✓ 导读完成：${level.title}`
-                  : `✓ 第 ${level.id} 关完成：${level.title}`,
+                `✓ 第 ${level.id} 关完成：${level.title}`,
               kind: 'out',
             },
           ]);
@@ -412,7 +407,7 @@ export default function App() {
   );
 
   const onFocusConcept = useCallback((id: string) => {
-    // L0：点概念卡演示；非 L0 也可点卡查看，但通关闪烁以 cardFlash 为准
+    // L2：点概念卡演示；非 L0 也可点卡查看，但通关闪烁以 cardFlash 为准
     setActiveConcept(id);
     if (level.id !== 0) setCardFlash(null);
   }, [level.id]);
@@ -526,11 +521,9 @@ export default function App() {
     enterLevel(level.id);
   }, [enterLevel, level.id]);
 
-  const onNextLevel = useCallback(() => {
-    const next = nextLevelId(level.id, progress.completed);
-    if (next != null) enterLevel(next);
-    else enterFree();
-  }, [level.id, progress.completed, enterLevel, enterFree]);
+  const onNextLevel = useCallback((targetId: number) => {
+    enterLevel(targetId);
+  }, [enterLevel]);
 
   useEffect(() => {
     const el = bodyRef.current?.querySelector('.terminal-body');
@@ -568,7 +561,7 @@ export default function App() {
             onSelectLevel={onSelectLevel}
             onFill={onFill}
             onResetLevel={onResetLevel}
-            onNextLevel={onNextLevel}
+        onNextLevel={onNextLevel}
             onEnterFree={enterFree}
             onReadConcept={onReadConcept}
             onFocusConcept={onFocusConcept}
@@ -581,12 +574,13 @@ export default function App() {
           <CommitGraph
             state={state}
             remoteBranches={remoteRefs}
+            remoteCommits={world.remoteCommits}
             userLabel={userLabel}
             highlights={highlights}
             onFill={onFill}
             demoFocus={
-              inLevel && level.id === 0
-                ? ((activeConcept as 'head' | 'branch' | 'commit' | 'tip' | 'remote') || null)
+              inLevel && level.id === 2
+                ? ((activeConcept as 'head' | 'branch' | 'commit' | 'latest' | 'remote') || null)
                 : cardFlash
             }
           />
@@ -604,7 +598,7 @@ export default function App() {
       </div>
       {inLevel && chapterModalOpen && (
         <ChapterLearnModal
-          kicker={level.id === 0 ? '导读' : `第 ${level.id} 关`}
+          kicker={`第 ${level.id} 关`}
           title={level.title}
           intro={level.intro?.summary ?? level.story}
           introDetail={level.intro?.detail}

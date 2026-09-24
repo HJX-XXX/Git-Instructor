@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { LEVELS } from '../levels/catalog';
-import { STAGES } from '../levels/stages';
+import {
+  STAGES,
+  firstLevelOfNextStage,
+  isLastLevelOfStage,
+  nextLevelInStage,
+  nextStageOf,
+} from '../levels/stages';
 import type { LevelCheckResult, LevelDef, LevelProgress } from '../levels/types';
 
 interface Props {
@@ -13,7 +19,7 @@ interface Props {
   onSelectLevel: (id: number) => void;
   onFill: (cmd: string) => void;
   onResetLevel: () => void;
-  onNextLevel: () => void;
+  onNextLevel: (id: number) => void;
   onEnterFree: () => void;
   onReadConcept: (id: string) => void;
   onFocusConcept: (id: string) => void;
@@ -40,8 +46,31 @@ export function LevelPanel({
   /** 默认展开当前关所在阶段，其余保持上次状态 */
   const [collapsedStages, setCollapsedStages] = useState<string[]>([]);
   const won = checkResult?.win ?? false;
-  const hasNext = LEVELS.some((l) => l.id === level.id + 1);
+  const nextInStage = nextLevelInStage(level.id, LEVELS);
+  const lastOfStage = isLastLevelOfStage(level.id, LEVELS);
+  const nextStage = lastOfStage ? nextStageOf(level.stageId) : null;
+  const nextStageFirst = lastOfStage ? firstLevelOfNextStage(level.id, LEVELS) : null;
   const storyRef = useRef<HTMLButtonElement | null>(null);
+
+  /** 阶段内关卡全部通关后自动收起，方便看到后面阶段 */
+  useEffect(() => {
+    setCollapsedStages((prev) => {
+      let next = prev;
+      for (const stage of STAGES) {
+        const items = LEVELS.filter((l) => l.stageId === stage.id);
+        if (items.length === 0) continue;
+        const allDone = items.every((l) => progress.completed.includes(l.id));
+        if (allDone && !next.includes(stage.id)) {
+          next = [...next, stage.id];
+        }
+      }
+      // 当前关所在阶段始终展开，便于对照目标
+      if (next.includes(level.stageId)) {
+        next = next.filter((id) => id !== level.stageId);
+      }
+      return next === prev ? prev : next;
+    });
+  }, [progress.completed, level.stageId, level.id]);
 
   /** 展开/收起后，把卡片上「点击点」对齐回鼠标所在屏幕位置，避免列表跳动 */
   const alignCardToPointer = (
@@ -272,9 +301,18 @@ export function LevelPanel({
               <p className="level-win-title">本关完成</p>
               <p className="level-win-summary">{level.winExplanation.summary}</p>
               <div className="level-win-actions">
-                {hasNext ? (
-                  <button type="button" className="btn btn-primary" onClick={onNextLevel}>
+                {nextInStage != null ? (
+                  <button type="button" className="btn btn-primary" onClick={() => onNextLevel(nextInStage)}>
                     下一关
+                  </button>
+                ) : nextStageFirst != null ? (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => onNextLevel(nextStageFirst)}
+                    title={nextStage ? nextStage.title : undefined}
+                  >
+                    进入下一阶段
                   </button>
                 ) : (
                   <button type="button" className="btn btn-primary" onClick={onEnterFree}>

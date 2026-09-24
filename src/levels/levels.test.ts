@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   applyWorldCommand,
   createConceptDemoWorld,
@@ -18,9 +18,10 @@ import {
   checkLevel7,
   checkLevel8,
 } from './checks';
-import { isLevelUnlocked, markCompleted, nextLevelId, defaultProgress } from './progress';
+import { isLevelUnlocked, loadProgress, markCompleted, nextLevelId, defaultProgress } from './progress';
 import type { LevelLogEntry } from './types';
 import type { WorldState as W } from '../engine/types';
+import { layoutGraph } from '../engine/layout';
 
 function run(world: W, cmds: string[]) {
   let w = world;
@@ -36,13 +37,18 @@ function run(world: W, cmds: string[]) {
 }
 
 describe('level catalog', () => {
-  it('has levels 0-16', () => {
-    expect(LEVELS.map((l) => l.id)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
-    expect(getLevel(0)?.concepts?.map((c) => c.id)).toEqual(['head', 'commit', 'branch']);
-    expect(getLevel(2)?.title).toContain('状态');
-    expect(getLevel(5)?.title).toContain('Fast-forward');
-    expect(getLevel(9)?.title).toContain('soft');
-    expect(getLevel(16)?.stageId).toBe('s5');
+  it('has levels 1-25', () => {
+    expect(LEVELS.map((l) => l.id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25]);
+    expect(getLevel(2)?.concepts?.map((c) => c.id)).toEqual(['head', 'commit', 'branch']);
+    expect(getLevel(1)?.title).toContain('init');
+    expect(getLevel(4)?.title).toContain('状态');
+    expect(getLevel(7)?.title).toContain('Fast-forward');
+    expect(getLevel(25)?.title).toContain('mixed');
+    expect(getLevel(19)?.title).toContain('origin');
+    expect(LEVELS.map((l) => l.stageId)).toEqual([
+      ...Array(4).fill('s1'), ...Array(4).fill('s2'), ...Array(2).fill('s3'),
+      ...Array(4).fill('s4'), ...Array(5).fill('s5'), ...Array(6).fill('s6'),
+    ]);
   });
 
   it('every level has a stage and practice cards matching objectives', () => {
@@ -92,7 +98,39 @@ describe('level checks', () => {
     expect(r.objectives[0]?.done).toBe(false);
   });
 
-  it('L0 concept world still has feature; practice uses hotfix', () => {
+  it('L1 shows remote history from start; init adds anchor; clone joins local', () => {
+    const l1 = getLevel(1)!;
+    const b = l1.startWorld();
+    // 主体图空白；远程引用始终保留
+    expect(layoutGraph(b.users.alice, b.remoteBranches, b.remoteCommits).nodes).toHaveLength(0);
+    expect(b.remoteBranches.main).toBeTruthy();
+    expect(Object.keys(b.remoteCommits).length).toBeGreaterThan(0);
+    const afterInit = run(b, ['git init']);
+    expect(l1.check({ before: b, after: afterInit.w, log: afterInit.log }).win).toBe(false);
+    const afterInitNodes = layoutGraph(
+      afterInit.w.users.alice,
+      afterInit.w.remoteBranches,
+      afterInit.w.remoteCommits,
+    ).nodes;
+    expect(afterInitNodes.some((n) => n.kind === 'init')).toBe(true);
+    expect(afterInitNodes.filter((n) => n.kind !== 'init')).toHaveLength(0);
+    const afterClone = run(afterInit.w, ['git clone']);
+    const r = l1.check({
+      before: b,
+      after: afterClone.w,
+      log: [...afterInit.log, ...afterClone.log],
+    });
+    expect(r.win).toBe(true);
+    expect(Object.keys(afterClone.w.users.alice.commits).length).toBeGreaterThan(0);
+  });
+
+  it('clone fails when remote is empty', () => {
+    const emptyRemote = createEmptyWorld();
+    const r = applyWorldCommand(emptyRemote, 'git clone');
+    expect(r.ok).toBe(false);
+  });
+
+  it('L2 concept world still has feature; practice uses hotfix', () => {
     const repo = activeRepo(createConceptDemoWorld());
     expect(repo.branches.feature).toBeTruthy();
     expect(repo.branches.hotfix).toBeUndefined();
@@ -218,7 +256,7 @@ describe('level checks', () => {
   });
 
   it('L5 keeps FF objective after later log command', () => {
-    const before = getLevel(5)!.startWorld();
+    const before = getLevel(7)!.startWorld();
     const afterMerge = run(before, ['git status', 'git merge feature']);
     const mid = checkLevel5(before, afterMerge.w, afterMerge.log);
     expect(mid.objectives[1]?.done).toBe(true);
@@ -279,32 +317,32 @@ describe('level checks', () => {
       expect(before.users.alice).toBeDefined();
     }
 
-    const l5 = getLevel(5)!;
-    const b5 = l5.startWorld();
+    const l7ff = getLevel(7)!;
+    const b5 = l7ff.startWorld();
     const a5 = run(b5, ['git status', 'git merge feature', 'git log --oneline']);
     expect(
-      l5.check({ before: b5, after: a5.w, log: a5.log }).win,
+      l7ff.check({ before: b5, after: a5.w, log: a5.log }).win,
     ).toBe(true);
 
-    const l6 = getLevel(6)!;
-    const b6 = l6.startWorld();
+    const l8merge = getLevel(8)!;
+    const b6 = l8merge.startWorld();
     const a6 = run(b6, ['git status', 'git merge feature', 'git log --oneline']);
     expect(
-      l6.check({ before: b6, after: a6.w, log: a6.log }).win,
+      l8merge.check({ before: b6, after: a6.w, log: a6.log }).win,
     ).toBe(true);
 
-    const l7 = getLevel(7)!;
-    const b7 = l7.startWorld();
+    const l9reset = getLevel(9)!;
+    const b7 = l9reset.startWorld();
     const a7 = run(b7, ['git log --oneline', 'git reset --hard HEAD~1', 'git status']);
     expect(
-      l7.check({ before: b7, after: a7.w, log: a7.log }).win,
+      l9reset.check({ before: b7, after: a7.w, log: a7.log }).win,
     ).toBe(true);
 
-    const l8 = getLevel(8)!;
-    const b8 = l8.startWorld();
+    const l10push = getLevel(10)!;
+    const b8 = l10push.startWorld();
     const a8 = run(b8, ['git commit -m "x"', 'git push origin main', 'user bob', 'git pull']);
     expect(
-      l8.check({
+      l10push.check({
         before: b8,
         after: a8.w,
         log: a8.log,
@@ -312,17 +350,16 @@ describe('level checks', () => {
     ).toBe(true);
   });
 
-  it('L9-L16 start worlds and happy paths', () => {
-    const l9 = getLevel(9)!;
-    const b9 = l9.startWorld();
+  it('later stages start worlds and happy paths', () => {
+    const l11soft = getLevel(25)!;
+    const b9 = l11soft.startWorld();
     const a9 = run(b9, [
       'git log --oneline',
       'git reset --soft HEAD~1',
-      'git status',
+      'git reset --mixed HEAD~1',
       'git reset --hard HEAD~1',
-      'git status',
     ]);
-    expect(l9.check({ before: b9, after: a9.w, log: a9.log }).win).toBe(true);
+    expect(l11soft.check({ before: b9, after: a9.w, log: a9.log }).win).toBe(true);
 
     // soft 后未 status 就 hard：不应把「soft 后 status」算成通过
     const a9b = run(b9, [
@@ -331,29 +368,29 @@ describe('level checks', () => {
       'git reset --hard HEAD~1',
       'git status',
     ]);
-    const r9b = l9.check({ before: b9, after: a9b.w, log: a9b.log });
+    const r9b = l11soft.check({ before: b9, after: a9b.w, log: a9b.log });
     expect(r9b.win).toBe(false);
     expect(r9b.objectives[2]!.done).toBe(false);
 
-    const l10 = getLevel(10)!;
-    const b10 = l10.startWorld();
+    const l13rev = getLevel(12)!;
+    const b10 = l13rev.startWorld();
     const a10 = run(b10, ['git log --oneline', 'git revert HEAD', 'git log --oneline']);
-    expect(l10.check({ before: b10, after: a10.w, log: a10.log }).win).toBe(true);
+    expect(l13rev.check({ before: b10, after: a10.w, log: a10.log }).win).toBe(true);
 
-    const l11 = getLevel(11)!;
-    const b11 = l11.startWorld();
+    const l14rebase = getLevel(13)!;
+    const b11 = l14rebase.startWorld();
     const a11 = run(b11, ['git switch feature', 'git rebase main', 'git log --oneline']);
-    expect(l11.check({ before: b11, after: a11.w, log: a11.log }).win).toBe(true);
+    expect(l14rebase.check({ before: b11, after: a11.w, log: a11.log }).win).toBe(true);
 
-    const l12 = getLevel(12)!;
-    const b12 = l12.startWorld();
+    const l21fetch = getLevel(15)!;
+    const b12 = l21fetch.startWorld();
     const a12 = run(b12, [
       'git push origin main',
       'user bob',
       'git fetch',
       'git pull',
     ]);
-    expect(l12.check({ before: b12, after: a12.w, log: a12.log }).win).toBe(true);
+    expect(l21fetch.check({ before: b12, after: a12.w, log: a12.log }).win).toBe(true);
 
     // Alice 身份下 fetch/pull 不能算 Bob 已完成同步
     const a12wrong = run(b12, [
@@ -361,34 +398,34 @@ describe('level checks', () => {
       'git fetch',
       'git pull',
     ]);
-    const r12wrong = l12.check({ before: b12, after: a12wrong.w, log: a12wrong.log });
+    const r12wrong = l21fetch.check({ before: b12, after: a12wrong.w, log: a12wrong.log });
     expect(r12wrong.win).toBe(false);
     expect(r12wrong.objectives[1]!.done).toBe(false);
 
-    const l13 = getLevel(13)!;
-    const b13 = l13.startWorld();
+    const l22pushrej = getLevel(16)!;
+    const b13 = l22pushrej.startWorld();
     const pushFail = applyWorldCommand(b13, 'git push origin main');
     expect(pushFail.ok).toBe(false);
     const a13 = run(pushFail.world, ['git pull', 'git push origin main']);
     expect(
-      l13.check({
+      l22pushrej.check({
         before: b13,
         after: a13.w,
         log: [{ input: 'git push origin main', ok: false }, ...a13.log],
       }).win,
     ).toBe(true);
 
-    const l14 = getLevel(14)!;
-    const b14 = l14.startWorld();
+    const l23pullm = getLevel(17)!;
+    const b14 = l23pullm.startWorld();
     const a14 = run(b14, [
       'git commit -m "bob: 仅在本地"',
       'git pull',
       'git log --oneline',
     ]);
-    expect(l14.check({ before: b14, after: a14.w, log: a14.log }).win).toBe(true);
+    expect(l23pullm.check({ before: b14, after: a14.w, log: a14.log }).win).toBe(true);
 
-    const l15 = getLevel(15)!;
-    const b15 = l15.startWorld();
+    const l24brdel = getLevel(18)!;
+    const b15 = l24brdel.startWorld();
     const delFeature = run(b15, ['git branch -d feature']);
     const dFail = applyWorldCommand(delFeature.w, 'git branch -d hotfix');
     expect(dFail.ok).toBe(false);
@@ -398,16 +435,37 @@ describe('level checks', () => {
       { input: 'git branch -d hotfix', ok: false },
       ...forceDel.log,
     ];
-    expect(l15.check({ before: b15, after: forceDel.w, log: l15log }).win).toBe(true);
+    expect(l24brdel.check({ before: b15, after: forceDel.w, log: l15log }).win).toBe(true);
 
-    const l16 = getLevel(16)!;
-    const b16 = l16.startWorld();
+    const l25rebaseo = getLevel(19)!;
+    const b16 = l25rebaseo.startWorld();
     const a16 = run(b16, ['git fetch', 'git rebase origin/main', 'git log --oneline']);
-    expect(l16.check({ before: b16, after: a16.w, log: a16.log }).win).toBe(true);
+    expect(l25rebaseo.check({ before: b16, after: a16.w, log: a16.log }).win).toBe(true);
   });
 });
 
 describe('progress helpers', () => {
+  it('migrates saved progress from old level numbers only once', () => {
+    const values = new Map<string, string>([
+      ['git-instructor:progress', JSON.stringify({
+        profile: 'beginner', completed: [11, 12, 25], currentLevelId: 25,
+      })],
+    ]);
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+    });
+    try {
+      expect(loadProgress()).toEqual({
+        profile: 'beginner', completed: [25, 11, 19], currentLevelId: 19,
+      });
+      expect(loadProgress().currentLevelId).toBe(19);
+      expect(values.has('git-instructor:progress:v2')).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('all levels are unlocked without requiring previous completion', () => {
     expect(isLevelUnlocked(0, [])).toBe(true);
     expect(isLevelUnlocked(1, [])).toBe(true);
@@ -415,11 +473,15 @@ describe('progress helpers', () => {
     expect(isLevelUnlocked(16, [0])).toBe(true);
   });
 
-  it('next level id', () => {
-    expect(nextLevelId(0, [0])).toBe(1);
-    expect(nextLevelId(7, [0, 1, 2, 3, 4, 5, 6, 7])).toBe(8);
-    expect(nextLevelId(15, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15])).toBe(16);
-    expect(nextLevelId(16, LEVELS.map((l) => l.id).filter((n) => n !== 16))).toBeNull();
+  it('next level id walks within stage then jumps to next stage first', () => {
+    expect(nextLevelId(1, [1])).toBe(2);
+    expect(nextLevelId(8, [1, 2, 3, 4, 5, 6, 7, 8])).toBe(9);
+    expect(nextLevelId(24, [])).toBe(25);
+    expect(nextLevelId(10, [])).toBe(11);
+    expect(nextLevelId(14, [])).toBe(15);
+    // 阶段五末关 rebase 到 origin → 阶段六首关工作区与暂存区。
+    expect(nextLevelId(19, [])).toBe(20);
+    expect(nextLevelId(25, [])).toBeNull();
   });
 
   it('mark completed is idempotent', () => {
