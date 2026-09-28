@@ -187,6 +187,14 @@ export default function App() {
   const wonRef = useRef(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const bodyRef = useRef<HTMLDivElement | null>(null);
+  /** 自由练习现场快照：切到关卡后再回来时恢复 */
+  const freeSessionRef = useRef<{
+    world: WorldState;
+    termByUser: Record<UserId, TermLine[]>;
+    historyByUser: Record<UserId, string[]>;
+    explanation: Explanation | null;
+    highlights: Highlights | undefined;
+  } | null>(null);
 
   const level = useMemo(() => getLevel(progress.currentLevelId) ?? LEVELS[0]!, [progress.currentLevelId]);
   const state = activeRepo(world);
@@ -199,6 +207,18 @@ export default function App() {
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  // 自由练习进行中持续快照，便于切走后恢复
+  useEffect(() => {
+    if (mode !== 'free') return;
+    freeSessionRef.current = {
+      world,
+      termByUser,
+      historyByUser,
+      explanation,
+      highlights,
+    };
+  }, [mode, world, termByUser, historyByUser, explanation, highlights]);
 
   const appendTerm = useCallback((userId: UserId, extra: TermLine[]) => {
     setTermByUser((prev) => ({
@@ -242,13 +262,12 @@ export default function App() {
   }, []);
 
   const enterFree = useCallback(() => {
-    setMode('free');
-    // 切到自由练习时清空提交图，避免残留关卡演示状态
-    setWorld(createInitedEmptyWorld());
+    // 已在自由练习：保留现场，不重置
+    if (mode === 'free') {
+      inputRef.current?.focus({ preventScroll: true });
+      return;
+    }
     setLevelStartWorld(null);
-    setTermByUser(emptyHist());
-    setHistoryByUser(emptyHistories());
-    setHighlights(undefined);
     setCheckResult(null);
     setLevelLog([]);
     setReadConcepts([]);
@@ -257,14 +276,47 @@ export default function App() {
     prevObjectivesDone.current = [];
     setInput('');
     setHistIdx(-1);
-    setExplanation({
-      title: '自由练习',
-      summary: '沙箱已清空。可任意练习；协作用 push / fetch / pull，顶栏可加载演示。',
-      detail: '需要系统学习时，点顶栏「关卡学习」。',
-      related: ['help', 'git status', 'git switch -c feature'],
-    });
+    setMode('free');
+
+    const saved = freeSessionRef.current;
+    if (saved) {
+      // 恢复上次自由练习现场
+      setWorld(saved.world);
+      const restoredUser = saved.world.activeUser;
+      setTermByUser({
+        ...saved.termByUser,
+        [restoredUser]: [
+          ...saved.termByUser[restoredUser],
+          { text: '— 已恢复上次自由练习现场 —', kind: 'out' },
+        ],
+      });
+      setHistoryByUser(saved.historyByUser);
+      setHighlights(saved.highlights);
+      setExplanation(
+        saved.explanation ?? {
+          title: '自由练习',
+          summary: '已恢复你上次的练习现场（提交图与终端）。',
+          detail:
+            '提示：工作区/暂存区为教学两态模拟（无真实文件），不支持 touch 等文件命令。完整两区流程见「关卡学习」L20–L25。',
+          related: ['help', 'git status', 'git log --oneline'],
+        },
+      );
+    } else {
+      // 首次进入自由练习
+      setWorld(createInitedEmptyWorld());
+      setTermByUser(emptyHist());
+      setHistoryByUser(emptyHistories());
+      setHighlights(undefined);
+      setExplanation({
+        title: '自由练习',
+        summary: '沙箱已就绪，可任意练习 Git 命令；协作用 push / fetch / pull。',
+        detail:
+          '提示：工作区/暂存区为教学两态模拟（无真实文件），不支持 touch 等文件命令，add/diff 在无改动时会为空。想完整练习两区流程请到「关卡学习」L20–L25。自由练习里 commit 可直接在图上产生提交（沙箱简化）。',
+        related: ['help', 'git status', 'git commit -m "..."', 'git switch -c feature'],
+      });
+    }
     inputRef.current?.focus({ preventScroll: true });
-  }, []);
+  }, [mode]);
 
   const onChooseProfile = useCallback(
     (profile: SkillProfile) => {
@@ -274,6 +326,7 @@ export default function App() {
       if (profile === 'beginner') {
         enterLevel(next.currentLevelId ?? LEVELS[0]!.id);
       } else {
+        freeSessionRef.current = null;
         setMode('free');
         setWorld(createEmptyWorld());
         setLevelStartWorld(null);
@@ -282,6 +335,8 @@ export default function App() {
         setExplanation({
           title: '自由沙箱',
           summary: '已按「老手」进入空白沙箱。顶栏可加载演示或进入关卡复习。',
+          detail:
+            '提示：工作区/暂存区为教学两态模拟（无真实文件），不支持 touch 等文件命令。完整两区流程见「关卡学习」L20–L25。',
           related: ['help', 'git commit -m "..."', 'git switch -c feature'],
         });
       }

@@ -197,7 +197,7 @@ function runCommit(state: RepoState, message: string): CommandResult {
         ? `新提交 ${commit.id} 接在 ${tip} 之后，分支 ${moved ?? 'HEAD'} 前进到它。其它分支不会动。`
         : `空仓库里出现首个提交 ${commit.id}，分支 ${moved ?? 'HEAD'} 从「尚无提交」变成指向它。`,
       detail:
-        '本沙箱用「提交」代表你在该分支上的改动。完整 Git 通常先 git add 进暂存区再 commit；本关若未 add 也可直接 commit（教学简化）。',
+        '沙箱用「提交」代表你在该分支上的改动。完整 Git 通常先 git add 进暂存区再 commit；沙箱允许未 add 也可直接 commit（教学简化）。工作区/暂存区为两态模拟，无真实文件，touch 等命令不支持。',
       related: ['git add .', 'git log --oneline', 'git status'],
     },
     { createdCommits: [commit.id], movedRefs: moved ? [moved] : [], newHead: true },
@@ -252,8 +252,9 @@ function runAdd(state: RepoState): CommandResult {
     return ok(state, ['nothing to stage（工作区无改动）'], {
       title: 'git add',
       summary: '把工作区改动放进暂存区（index）。当前没有可暂存的改动。',
-      detail: '沙箱用两态模拟：工作区 / 暂存区，不列出具体文件。',
-      related: ['git status', 'git diff'],
+      detail:
+        '沙箱用两态模拟工作区/暂存区，不列出具体文件，也不支持 touch 等真实文件操作。想练习两区流程请进入「关卡学习」L20–L25；自由练习可用提交直接在图上产生变更。',
+      related: ['git status', 'git diff', 'git commit -m "..."'],
     });
   }
   state.staged = true;
