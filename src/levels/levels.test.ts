@@ -39,7 +39,13 @@ function run(world: W, cmds: string[]) {
 describe('level catalog', () => {
   it('has levels 1-25', () => {
     expect(LEVELS.map((l) => l.id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25]);
-    expect(getLevel(2)?.concepts?.map((c) => c.id)).toEqual(['head', 'commit', 'branch']);
+    expect(getLevel(2)?.concepts?.map((c) => c.id)).toEqual([
+      'head',
+      'commit',
+      'branch',
+      'switch-hotfix',
+      'commit-on-hotfix',
+    ]);
     expect(getLevel(1)?.title).toContain('init');
     expect(getLevel(4)?.title).toContain('状态');
     expect(getLevel(7)?.title).toContain('Fast-forward');
@@ -72,9 +78,12 @@ describe('level checks', () => {
       'git switch feature',
       'git branch hotfix',
       'git commit -m "这是我的提交"',
+      'git switch hotfix',
+      'git commit -m "hotfix 上的提交"',
     ]);
     const r = checkLevel0(w, log);
     expect(r.win).toBe(true);
+    expect(r.objectives).toHaveLength(5);
   });
 
   it('L0 fails without the required commit message', () => {
@@ -83,6 +92,8 @@ describe('level checks', () => {
       'git switch feature',
       'git branch hotfix',
       'git commit -m "随便写的"',
+      'git switch hotfix',
+      'git commit -m "hotfix 上的提交"',
     ]);
     expect(checkLevel0(w, log).win).toBe(false);
   });
@@ -92,10 +103,43 @@ describe('level checks', () => {
     const { w, log } = run(start, [
       'git branch hotfix',
       'git commit -m "这是我的提交"',
+      'git switch hotfix',
+      'git commit -m "hotfix 上的提交"',
     ]);
     const r = checkLevel0(w, log);
     expect(r.win).toBe(false);
     expect(r.objectives[0]?.done).toBe(false);
+  });
+
+  it('L0 fails without switching to and committing on hotfix', () => {
+    const start = createConceptDemoWorld();
+    const { w, log } = run(start, [
+      'git switch feature',
+      'git branch hotfix',
+      'git commit -m "这是我的提交"',
+    ]);
+    const r = checkLevel0(w, log);
+    expect(r.win).toBe(false);
+    expect(r.objectives[2]?.done).toBe(true);
+    expect(r.objectives[3]?.done).toBe(false);
+    expect(r.objectives[4]?.done).toBe(false);
+  });
+
+  it('L0 hotfix commit grows hotfix tip past feature', () => {
+    const start = createConceptDemoWorld();
+    const { w, log } = run(start, [
+      'git switch feature',
+      'git branch hotfix',
+      'git commit -m "这是我的提交"',
+      'git switch hotfix',
+      'git commit -m "hotfix 上的提交"',
+    ]);
+    const r = checkLevel0(w, log);
+    expect(r.objectives[4]?.done).toBe(true);
+    const repo = activeRepo(w);
+    expect(repo.branches.hotfix).toBeTruthy();
+    expect(repo.commits[repo.branches.hotfix!]!.message).toContain('hotfix 上的提交');
+    expect(repo.branches.hotfix).not.toBe(repo.branches.feature);
   });
 
   it('L1 shows remote history from start; init adds anchor; clone joins local', () => {
@@ -439,9 +483,15 @@ describe('level checks', () => {
 
     const l25rebaseo = getLevel(19)!;
     const b16 = l25rebaseo.startWorld();
-    const a16 = run(b16, ['git fetch', 'git rebase origin/main', 'git log --oneline']);
+    const a16 = run(b16, [
+      'git fetch',
+      'git rebase origin/main',
+      'git log --oneline',
+      'git push origin main',
+    ]);
     expect(l25rebaseo.check({ before: b16, after: a16.w, log: a16.log }).win).toBe(true);
-  });
+    expect(a16.w.remoteBranches.main).toBe(activeRepo(a16.w).branches.main);
+      });
 });
 
 describe('progress helpers', () => {

@@ -8,6 +8,8 @@ commits: ef0a4bb..328d68a
 
 # Git 可视化教学沙箱（MVP）
 
+> 本文是 **MVP 交付存档**（2026-02）。产品随后演进为关卡体系 L1–L25、工作区/暂存区、远程协作与多用户等；**现行产品范围以 `docs/product/PRD.md` 为准**。
+
 ## Report
 
 **What was built** — 纯前端 React + TypeScript + Vite 沙箱：自研内存 Git 引擎支持 commit / branch / switch / merge / reset / revert / rebase / status / log；三栏 UI（速查、SVG 提交图 + 深色终端、中文讲解）；预置 main×3 演示仓库与一键重置。merge 语义为：FF；分叉且干净生成双父合并并提示真实 Git 冲突可能；分叉且 dirty 以 CONFLICT 拒绝且不改状态。

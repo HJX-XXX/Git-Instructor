@@ -138,7 +138,7 @@ export function checkLevelRestore(
   const labels = [
     '工作区有改动时执行 restore 丢弃',
     '用 status 确认工作区已干净',
-    '理解 restore --staged 会把改动撤回工作区',
+    '用 restore --staged 把改动撤回工作区（不丢内容）',
   ];
   const ranRestore = ranOkMatch(log, (t) => t.includes('restore') && !t.includes('staged'));
   const ranRestoreStaged = ranOkMatch(log, (t) => t.includes('restore') && t.includes('staged'));
@@ -149,10 +149,12 @@ export function checkLevelRestore(
     ranRestore && clean && ranStatusCmd,
     ranRestoreStaged,
   ];
-  let feedback = '按卡片：restore → status →（可选）restore --staged。';
-  if (!ranRestore) feedback = '执行 git restore .，丢弃工作区改动。';
+  let feedback = '按卡片：restore . 丢工作区 → status →（可先 add 再）restore --staged 体会撤回。';
+  if (!ranRestore) feedback = '执行 git restore .，丢弃工作区未暂存改动。';
   else if (!ranStatusCmd) feedback = '执行 git status，确认工作区已干净。';
-  else if (!ranRestoreStaged) feedback = '执行 git restore --staged，理解暂存区撤回（可在 add 后试）。';
+  else if (!ranRestoreStaged) {
+    feedback = '执行 git restore --staged，把改动从暂存区撤回工作区（不丢内容；可先 git add . 再试）。';
+  }
   return result(labels, dones, feedback);
 }
 
@@ -253,17 +255,28 @@ export function checkLevel0(
     '把 HEAD 指向 feature',
     '提交说明为「这是我的提交」的 commit',
     '创建分支 hotfix',
+    '把 HEAD 指向 hotfix',
+    '在 hotfix 上产生新的 commit',
   ];
   const ranOkMatch = (match: (input: string) => boolean) =>
     log.some((e) => e.ok && match(e.input.trim().toLowerCase()));
 
   const onFeature = repo.head.kind === 'branch' && repo.head.name === 'feature';
+  const onHotfix = repo.head.kind === 'branch' && repo.head.name === 'hotfix';
   const ranSwitchFeature = ranOkMatch((t) => {
     return (
       t === 'git switch feature' ||
       t === 'switch feature' ||
       t === 'git checkout feature' ||
       t === 'checkout feature'
+    );
+  });
+  const ranSwitchHotfix = ranOkMatch((t) => {
+    return (
+      t === 'git switch hotfix' ||
+      t === 'switch hotfix' ||
+      t === 'git checkout hotfix' ||
+      t === 'checkout hotfix'
     );
   });
 
@@ -281,13 +294,28 @@ export function checkLevel0(
     repo.branches.feature && repo.commits[repo.branches.feature],
   );
 
+  // hotfix 上的新提交：tip 说明含约定文案，且不是 feature 仍指向的那笔
+  const hotfixTipId = repo.branches.hotfix;
+  const hotfixTip = hotfixTipId ? repo.commits[hotfixTipId] : undefined;
+  const featureTipId = repo.branches.feature;
+  const ranCommitOnHotfix = ranOkMatch(
+    (t) => t.includes('commit') && t.includes('hotfix 上的提交'),
+  );
+  const hotfixGrew = Boolean(
+    hotfixTip &&
+      hotfixTip.message.includes('hotfix 上的提交') &&
+      hotfixTip.id !== featureTipId,
+  );
+
   const dones = [
     ranSwitchFeature || (onFeature && hasCommitMsg),
     ranCommitMsg && hasCommitMsg,
     hotfixExists,
+    ranSwitchHotfix || (onHotfix && hotfixGrew),
+    ranCommitOnHotfix && hotfixGrew,
   ];
 
-  let feedback = '依次完成三张卡上的实操：先自己写命令，想不起来再点「显示命令」。';
+  let feedback = '依次完成五张卡上的实操：先自己写命令，想不起来再点「显示命令」。';
   if (!featureKept) {
     feedback = '请保留图上的演示分支 feature；HEAD 目标就是切到它。可重置本关重来。';
   } else if (!ranSwitchFeature && !onFeature) {
@@ -296,6 +324,10 @@ export function checkLevel0(
     feedback = '提交说明为「这是我的提交」：git commit -m "这是我的提交"。';
   } else if (!hotfixExists) {
     feedback = '再创建新分支 hotfix：git branch hotfix（不会切换 HEAD）。';
+  } else if (!ranSwitchHotfix && !onHotfix) {
+    feedback = '把 HEAD 切到 hotfix：git switch hotfix，准备在它上面提交。';
+  } else if (!ranCommitOnHotfix || !hotfixGrew) {
+    feedback = '在 hotfix 上提交：git commit -m "hotfix 上的提交"，看这个分支长出新圆点。';
   }
   return result(labels, dones, feedback);
 }
@@ -981,28 +1013,36 @@ export function checkLevel16(
     '已 fetch 远程更新',
     '已 rebase 到 origin/main',
     'log 显示本地提交接在远程之上且线性',
+    '已 push 到远程',
   ];
   const a = activeRepo(after);
   const tip = a.branches.main;
   const remoteTip = after.remoteBranches.main;
   const ranFetch = ranOkMatch(log, (t) => t.includes('fetch'));
   const ranRebase = ranOkMatch(log, (t) => t.includes('rebase'));
-  const ontoRemote =
+  const ranPush = ranOkMatch(log, (t) => t.includes('push'));
+  // rebase 后本地在远程之上；若已 push，则两边 tip 相同
+  const onTopOfRemote =
     Boolean(tip && remoteTip) &&
-    tip !== remoteTip &&
-    isAncestor(a.commits, remoteTip!, tip!);
+    (tip === remoteTip || isAncestor(a.commits, remoteTip!, tip!));
   const tipParents = tip ? a.commits[tip]?.parents.length ?? 0 : 0;
   const linear = tipParents <= 1;
+  const published = Boolean(tip && remoteTip) && tip === remoteTip;
 
+  const rebased = ranRebase && onTopOfRemote && linear;
   const dones = [
     ranFetch,
-    ranRebase && ontoRemote && linear,
-    ranRebase && ontoRemote && linear && ranLog(log),
+    rebased,
+    rebased && ranLog(log),
+    ranPush && published,
   ];
-  let feedback = '按卡片：fetch → rebase origin/main → log 观察。';
+  let feedback = '按卡片：fetch → rebase origin/main → log 观察 → push 发布。';
   if (!ranFetch) feedback = '先执行 git fetch，更新远程跟踪引用。';
   else if (!ranRebase) feedback = '执行 git rebase origin/main。';
-  else if (!ontoRemote) feedback = 'rebase 后本地 main 应接在 origin/main 之上。';
+  else if (!onTopOfRemote) feedback = 'rebase 后本地 main 应接在 origin/main 之上。';
   else if (!ranLog(log)) feedback = '执行 log --oneline 确认线性。';
+  else if (!ranPush || !published) {
+    feedback = '最后 git push origin main，把垫在远程之上的提交发布出去。';
+  }
   return result(labels, dones, feedback);
 }
